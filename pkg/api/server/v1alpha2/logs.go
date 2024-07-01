@@ -119,41 +119,25 @@ func (s *Server) UpdateLog(srv pb.Logs_UpdateLogServer) error {
 			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
 		}
 		// Ensure that we are receiving logs for the same record
-		if name == "" {
-			name = recv.GetName()
-			s.logger.Debugf("receiving logs for %s", name)
-			parent, resultName, recordName, err = log.ParseName(name)
-			if err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
-			}
-
-			if err = s.auth.Check(srv.Context(), parent, auth.ResourceLogs, auth.PermissionUpdate); err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, false)
-			}
-		}
-		if name != recv.GetName() {
-			err = fmt.Errorf("cannot put logs for multiple records in the same server")
-			return s.handleReturn(srv,
-				rec,
-				object,
-				bytesWritten,
-				stream,
-				err,
-				false)
+		name = recv.GetName()
+		s.logger.Debugf("receiving logs for %s", name)
+		parent, resultName, recordName, err = log.ParseName(name)
+		if err != nil {
+			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
 		}
 
-		if rec == nil {
-			rec, err = getRecord(s.db.WithContext(srv.Context()), parent, resultName, recordName)
-			if err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
-			}
+		if err = s.auth.Check(srv.Context(), parent, auth.ResourceLogs, auth.PermissionUpdate); err != nil {
+			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, false)
 		}
 
-		if stream == nil {
-			stream, object, err = log.ToStream(srv.Context(), rec, s.config)
-			if err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, false)
-			}
+		rec, err = getRecord(s.db.WithContext(srv.Context()), parent, resultName, recordName)
+		if err != nil {
+			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
+		}
+
+		stream, object, err = log.ToStream(srv.Context(), rec, s.config)
+		if err != nil {
+			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, false)
 		}
 
 		buffer := bytes.NewBuffer(recv.GetData())
