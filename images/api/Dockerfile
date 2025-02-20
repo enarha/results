@@ -1,5 +1,5 @@
 # Docker configuration to build Tekton Results apiserver image
-FROM registry.access.redhat.com/ubi9/go-toolset:1.22.5 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.22.9 AS builder
 
 WORKDIR /opt/app-root/src
 

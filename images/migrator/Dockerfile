@@ -1,5 +1,5 @@
 # Docker configuration to build Tekton Results Migrator image
-FROM registry.access.redhat.com/ubi9/go-toolset:1.19 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.22.9 AS builder
 
 WORKDIR /opt/app-root/src
 
