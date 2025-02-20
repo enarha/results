@@ -10,6 +10,7 @@ COPY cmd/ cmd/
 COPY proto/ proto/
 COPY pkg/ pkg/
 COPY tools/ tools/
+COPY internal/ internal/
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o migrator ./tools/migrator/
 

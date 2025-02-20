@@ -9,6 +9,7 @@ COPY vendor/ vendor/
 COPY cmd/ cmd/
 COPY proto/ proto/
 COPY pkg/ pkg/
+COPY internal/ internal/
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o api cmd/api/main.go
 
