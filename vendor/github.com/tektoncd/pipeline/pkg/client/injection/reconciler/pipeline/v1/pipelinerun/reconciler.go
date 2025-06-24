@@ -339,6 +339,8 @@ func (r *reconcilerImpl) updateStatus(ctx context.Context, logger *zap.SugaredLo
 // TODO: this method could be generic and sync all finalizers. For now it only
 // updates defaultFinalizerName or its override.
 func (r *reconcilerImpl) updateFinalizersFiltered(ctx context.Context, resource *v1.PipelineRun, desiredFinalizers sets.Set[string]) (*v1.PipelineRun, error) {
+	logger := logging.FromContext(ctx)
+
 	// Don't modify the informers copy.
 	existing := resource.DeepCopy()
 
@@ -346,6 +348,8 @@ func (r *reconcilerImpl) updateFinalizersFiltered(ctx context.Context, resource 
 
 	// If there's nothing to update, just return.
 	existingFinalizers := sets.New[string](existing.Finalizers...)
+	logger.Debugf("DEBUG: existingFinalizers: %v", sets.List(existingFinalizers))
+	logger.Debugf("DEBUG: desiredFinalizers: %v", sets.List(desiredFinalizers))
 
 	if desiredFinalizers.Has(r.finalizerName) {
 		if existingFinalizers.Has(r.finalizerName) {

@@ -24,9 +24,15 @@ export SSL_CERT_PATH=${SSL_CERT_PATH:="/tmp/tekton-results/ssl"}
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+# install operator (pipelines, triggers, chains, and dashboard) instead of just pipelines
+TEKTON_PIPELINE_CONFIG="https://storage.googleapis.com/tekton-releases/operator/latest/release.yaml"
+
 echo "Installing Tekton Pipelines..."
 TEKTON_PIPELINE_CONFIG=${TEKTON_PIPELINE_CONFIG:-"https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml"}
 kubectl apply --filename "${TEKTON_PIPELINE_CONFIG}"
+
+# add some delay as operator takes longer to create the tekton-pipelines namespace
+sleep 45
 
 echo "Generating DB secret..."
 # Don't fail if the secret isn't created - this can happen if the secret already exists.
