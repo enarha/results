@@ -365,9 +365,10 @@ func (r *reconcilerImpl) updateFinalizersFiltered(ctx context.Context, resource 
 	}
 
 	patch := map[string]interface{}{
+		"apiVersion": "tekton.dev/v1",
+		"kind":       "TaskRun",
 		"metadata": map[string]interface{}{
-			"finalizers":      finalizers,
-			"resourceVersion": existing.ResourceVersion,
+			"finalizers": finalizers,
 		},
 	}
 
@@ -379,9 +380,10 @@ func (r *reconcilerImpl) updateFinalizersFiltered(ctx context.Context, resource 
 	patcher := r.Client.TektonV1().TaskRuns(resource.Namespace)
 
 	resourceName := resource.Name
+	forcePatch := true
 	updated, err := patcher.Patch(ctx, resourceName, types.ApplyPatchType, patchBytes, metav1.PatchOptions{
 		FieldManager: "results-watcher",
-		Force:        true,
+		Force:        &forcePatch,
 	})
 	if err != nil {
 		r.Recorder.Eventf(existing, corev1.EventTypeWarning, "FinalizerUpdateFailed",
