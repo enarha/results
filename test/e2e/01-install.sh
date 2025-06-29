@@ -32,7 +32,7 @@ TEKTON_PIPELINE_CONFIG=${TEKTON_PIPELINE_CONFIG:-"https://storage.googleapis.com
 kubectl apply --filename "${TEKTON_PIPELINE_CONFIG}"
 
 # add some delay as operator takes longer to create the tekton-pipelines namespace
-sleep 45
+sleep 60
 
 echo "Generating DB secret..."
 # Don't fail if the secret isn't created - this can happen if the secret already exists.

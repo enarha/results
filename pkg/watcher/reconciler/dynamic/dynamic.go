@@ -156,6 +156,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 		logger.Debugf("Post SetGroupVersionKind: %s", o.GetObjectKind().GroupVersionKind().String())
 	}
 
+	logger.Debugf("DEBUG: ResourceVersion: %s", o.GetResourceVersion())
+	logger.Debugf("DEBUG: DeletionTimestamp: %v", o.GetDeletionTimestamp())
+	logger.Debugf("DEBUG: Finalizers: %v", o.GetFinalizers())
+
 	// Upsert record.
 	startTime := time.Now()
 	res, rec, err := r.resultsClient.Put(ctx, o)
