@@ -16,8 +16,10 @@ package annotation
 
 import (
 	"encoding/json"
+	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 const (
@@ -59,19 +61,43 @@ type Annotation struct {
 	Value string
 }
 
-type mergePatch struct {
-	Metadata metadata `json:"metadata"`
+type applyPatch struct {
+	APIVersion string             `json:"apiVersion"`
+	Kind       string             `json:"kind"`
+	Metadata   applyPatchMetadata `json:"metadata"`
 }
 
-type metadata struct {
-	Annotations map[string]string `json:"annotations"`
+type applyPatchMetadata struct {
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// Patch creates a jsonpatch path used for adding result / record identifiers as
+// Patch creates a server-side apply patch used for adding result / record identifiers as
 // well as other internal annotations to an object's annotations field.
 func Patch(object metav1.Object, annotations ...Annotation) ([]byte, error) {
-	data := mergePatch{
-		Metadata: metadata{
+	// Get the API version and kind from the object
+	var apiVersion, kind string
+
+	// Try to get the kind from the object's GroupVersionKind
+	if runtimeObj, ok := object.(runtime.Object); ok {
+		if gvk := runtimeObj.GetObjectKind().GroupVersionKind(); !gvk.Empty() {
+			kind = gvk.Kind
+			apiVersion = gvk.GroupVersion().String()
+		}
+	}
+
+	// If we couldn't determine the kind or apiVersion, fail
+	if kind == "" || apiVersion == "" {
+		return nil, fmt.Errorf("could not determine apiVersion and kind from object %s/%s", object.GetNamespace(), object.GetName())
+	}
+
+	data := applyPatch{
+		APIVersion: apiVersion,
+		Kind:       kind,
+		Metadata: applyPatchMetadata{
+			Name:        object.GetName(),
+			Namespace:   object.GetNamespace(),
 			Annotations: map[string]string{},
 		},
 	}

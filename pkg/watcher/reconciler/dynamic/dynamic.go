@@ -295,7 +295,11 @@ func (r *Reconciler) addResultsAnnotations(ctx context.Context, o results.Object
 		if err != nil {
 			return fmt.Errorf("error adding Result annotations: %w", err)
 		}
-		if err := r.objectClient.Patch(ctx, o.GetName(), types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		patchOptions := metav1.PatchOptions{
+			FieldManager: "results-watcher",
+			Force:        &[]bool{true}[0], // Force the update even if there are conflicts
+		}
+		if err := r.objectClient.Patch(ctx, o.GetName(), types.ApplyPatchType, patch, patchOptions); err != nil {
 			return fmt.Errorf("error patching object: %w", err)
 		}
 	}
@@ -768,7 +772,11 @@ func (r *Reconciler) addStoredAnnotations(ctx context.Context, o results.Object)
 		logger.Errorf("error adding stored annotations: %w ObjectName: %s", err, o.GetName())
 		return fmt.Errorf("error adding stored annotations: %w ObjectName: %s", err, o.GetName())
 	}
-	if err := r.objectClient.Patch(ctx, o.GetName(), types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+	patchOptions := metav1.PatchOptions{
+		FieldManager: "results-watcher",
+		Force:        &[]bool{true}[0], // Force the update even if there are conflicts
+	}
+	if err := r.objectClient.Patch(ctx, o.GetName(), types.ApplyPatchType, patch, patchOptions); err != nil {
 		logger.Errorf("error patching object with stored annotation: %w ObjectName: %s", err, o.GetName())
 		return fmt.Errorf("error patching object with stored annotation: %w ObjectName: %s", err, o.GetName())
 	}
