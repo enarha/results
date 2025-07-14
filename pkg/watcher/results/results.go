@@ -104,9 +104,21 @@ func (c *Client) Put(ctx context.Context, o Object, opts ...grpc.CallOption) (*p
 // one, or updates the existing Result with new Object details if necessary.
 func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOption) (*pb.Result, error) {
 	resName := resultName(o)
+	logger := logging.FromContext(ctx).With(
+		zap.String(annotation.Result, resName),
+		zap.String("namespace", o.GetNamespace()),
+		zap.String("name", o.GetName()),
+	)
+	logger.Debugw("[ensureResult] Attempting to fetch result", "resultName", resName)
 	curr, err := c.ResultsClient.GetResult(ctx, &pb.GetResultRequest{Name: resName}, opts...)
 	if err != nil && status.Code(err) != codes.NotFound {
+		logger.Errorw("[ensureResult] Error fetching result", "resultName", resName, "error", err)
 		return nil, status.Errorf(status.Code(err), "GetResult(%s): %v", resName, err)
+	}
+	if status.Code(err) == codes.NotFound {
+		logger.Debugw("[ensureResult] Result not found, will attempt to create", "resultName", resName)
+	} else {
+		logger.Debugw("[ensureResult] Result found", "resultName", resName)
 	}
 
 	res := &pb.Result{
@@ -114,9 +126,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	}
 	recName := recordName(resName, o)
 	topLevel := isTopLevelRecord(o)
-	logger := logging.FromContext(ctx).With(zap.String(annotation.Result, resName),
-		zap.String(annotation.Record, recName),
-		zap.Bool("results.tekton.dev/top-level-record", topLevel))
+	logger = logger.With(zap.String(annotation.Record, recName), zap.Bool("results.tekton.dev/top-level-record", topLevel))
 
 	if topLevel {
 		// If the object corresponds to a top level record  - include a RecordSummary.
@@ -135,6 +145,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	if value, found := o.GetAnnotations()[annotation.ResultAnnotations]; found {
 		resultAnnotations, err := parseAnnotations(annotation.ResultAnnotations, value)
 		if err != nil {
+			logger.Errorw("[ensureResult] Error parsing result annotations", "error", err)
 			return nil, err
 		}
 		var annotations map[string]string
@@ -151,6 +162,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 		if value, found := o.GetAnnotations()[annotation.RecordSummaryAnnotations]; found {
 			recordSummaryAnnotations, err := parseAnnotations(annotation.RecordSummaryAnnotations, value)
 			if err != nil {
+				logger.Errorw("[ensureResult] Error parsing record summary annotations", "error", err)
 				return nil, err
 			}
 			var annotations map[string]string
@@ -185,12 +197,18 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	// Regardless of whether the object is a top level record or not,
 	// if the Result doesn't exist yet just create it and return.
 	if status.Code(err) == codes.NotFound {
-		logger.Debug("Result doesn't exist yet - creating")
+		logger.Infow("[ensureResult] Creating new result", "resultName", resName, "objectName", o.GetName(), "namespace", o.GetNamespace(), "annotations", o.GetAnnotations(), "labels", o.GetLabels())
 		req := &pb.CreateResultRequest{
 			Parent: parentName(o),
 			Result: res,
 		}
-		return c.ResultsClient.CreateResult(ctx, req, opts...)
+		created, createErr := c.ResultsClient.CreateResult(ctx, req, opts...)
+		if createErr != nil {
+			logger.Errorw("[ensureResult] Error creating result", "resultName", resName, "error", createErr)
+			return nil, createErr
+		}
+		logger.Infow("[ensureResult] Successfully created result", "resultName", resName)
+		return created, nil
 	}
 
 	// From here on, we're checking to see if there are any updates that need
@@ -199,7 +217,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	if !topLevel {
 		// If the object isn't top level there's nothing else to do because we
 		// won't be modifying the RecordSummary.
-		logger.Debug("No further actions to be done on the Result: the object is not a top level record")
+		logger.Debugw("[ensureResult] No further actions to be done on the Result: the object is not a top level record", "resultName", resName)
 		return curr, nil
 	}
 
@@ -207,9 +225,10 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	// change to the RecordSummary (only looking at the summary also helps us
 	// avoid OUTPUT_ONLY fields in the Result)
 	if cmp.Equal(curr.GetSummary(), res.GetSummary(), protocmp.Transform()) {
-		logger.Debug("No further actions to be done on the Result: no differences found")
+		logger.Debugw("[ensureResult] No further actions to be done on the Result: no differences found", "resultName", resName)
 		return curr, nil
 	}
+	logger.Infow("[ensureResult] Updating result with new summary", "resultName", resName)
 	req := &pb.UpdateResultRequest{
 		Name:   resName,
 		Result: res,
