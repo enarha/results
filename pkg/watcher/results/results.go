@@ -110,6 +110,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 		zap.String("name", o.GetName()),
 	)
 	logger.Debugw("[ensureResult] Attempting to fetch result", "resultName", resName)
+	logger.Debugf("[DEBUGena]: resName is: %s", resName)
 	curr, err := c.ResultsClient.GetResult(ctx, &pb.GetResultRequest{Name: resName}, opts...)
 	if err != nil && status.Code(err) != codes.NotFound {
 		logger.Errorw("[ensureResult] Error fetching result", "resultName", resName, "error", err)
@@ -125,11 +126,13 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 		Name: resName,
 	}
 	recName := recordName(resName, o)
+	logger.Debugf("[DEBUGena]: recName is: %s", recName)
 	topLevel := isTopLevelRecord(o)
 	logger = logger.With(zap.String(annotation.Record, recName), zap.Bool("results.tekton.dev/top-level-record", topLevel))
 
 	if topLevel {
 		// If the object corresponds to a top level record  - include a RecordSummary.
+		logger.Debug("[DEBUGena]: the record is toplevel")
 		res.Summary = &pb.RecordSummary{
 			Record:    recName,
 			Type:      convert.TypeName(o),
@@ -198,6 +201,8 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	// if the Result doesn't exist yet just create it and return.
 	if status.Code(err) == codes.NotFound {
 		logger.Infow("[ensureResult] Creating new result", "resultName", resName, "objectName", o.GetName(), "namespace", o.GetNamespace(), "annotations", o.GetAnnotations(), "labels", o.GetLabels())
+		logger.Debug("Result doesn't exist yet - creating")
+		logger.Debugf("[DEBUGena]: parentName is: %s", parentName(o))
 		req := &pb.CreateResultRequest{
 			Parent: parentName(o),
 			Result: res,
@@ -215,6 +220,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 	// to be made to the Record.
 
 	if !topLevel {
+		logger.Debug("[DEBUGena]: the record is not toplevel")
 		// If the object isn't top level there's nothing else to do because we
 		// won't be modifying the RecordSummary.
 		logger.Debugw("[ensureResult] No further actions to be done on the Result: the object is not a top level record", "resultName", resName)
@@ -326,6 +332,7 @@ func parentName(o metav1.Object) string {
 func (c *Client) upsertRecord(ctx context.Context, parent string, o Object, opts ...grpc.CallOption) (*pb.Record, error) {
 	recName := recordName(parent, o)
 	logger := logging.FromContext(ctx).With(zap.String(annotation.Record, recName))
+	logger.Debugf("[DEBUGena]: recName is: %s", recName)
 	data, err := convert.ToProto(o)
 	if err != nil {
 		return nil, err
