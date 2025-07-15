@@ -291,6 +291,7 @@ func (r *Reconciler) addResultsAnnotations(ctx context.Context, o results.Object
 		logger.Debug("Skipping CRD annotation patch: Result annotations are already set")
 	} else {
 		// Update object with Result Annotations.
+		logger.Debugf("[DEBUGena] patching object with annotations: %v", annotations)
 		patch, err := annotation.Patch(o, annotations...)
 		if err != nil {
 			return fmt.Errorf("error adding Result annotations: %w", err)
@@ -749,6 +750,7 @@ func (r *Reconciler) addStoredAnnotations(ctx context.Context, o results.Object)
 		if taskRun.IsDone() {
 			stored = annotation.Annotation{Name: annotation.Stored, Value: "true"}
 		}
+		logger.Debugf("[DEBUGena] case TaskRun, annotation stored: %s:%s", stored.Name, stored.Value)
 	case "PipelineRun":
 		pipelineRun, ok := o.(*pipelinev1.PipelineRun)
 		if !ok {
@@ -757,6 +759,7 @@ func (r *Reconciler) addStoredAnnotations(ctx context.Context, o results.Object)
 		if pipelineRun.IsDone() {
 			stored = annotation.Annotation{Name: annotation.Stored, Value: "true"}
 		}
+		logger.Debugf("[DEBUGena] case PipelineRun, annotation stored: %s:%s", stored.Name, stored.Value)
 	default:
 		return nil
 	}
