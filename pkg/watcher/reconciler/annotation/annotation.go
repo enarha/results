@@ -92,24 +92,29 @@ func Patch(object metav1.Object, annotations ...Annotation) ([]byte, error) {
 		return nil, fmt.Errorf("could not determine apiVersion and kind from object %s/%s", object.GetNamespace(), object.GetName())
 	}
 
+	// Start with a copy of the current annotations
+	merged := map[string]string{}
+	for k, v := range object.GetAnnotations() {
+		merged[k] = v
+	}
+	// Add/overwrite with new annotations
+	for _, annotation := range annotations {
+		if len(annotation.Value) != 0 {
+			merged[annotation.Name] = annotation.Value
+		}
+	}
+	if isChildAndDone(object) {
+		merged[ChildReadyForDeletion] = "true"
+	}
+
 	data := applyPatch{
 		APIVersion: apiVersion,
 		Kind:       kind,
 		Metadata: applyPatchMetadata{
 			Name:        object.GetName(),
 			Namespace:   object.GetNamespace(),
-			Annotations: map[string]string{},
+			Annotations: merged,
 		},
-	}
-
-	for _, annotation := range annotations {
-		if len(annotation.Value) != 0 {
-			data.Metadata.Annotations[annotation.Name] = annotation.Value
-		}
-	}
-
-	if isChildAndDone(object) {
-		data.Metadata.Annotations[ChildReadyForDeletion] = "true"
 	}
 	return json.Marshal(data)
 }
