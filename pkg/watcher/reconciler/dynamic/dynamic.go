@@ -98,6 +98,16 @@ func NewDynamicReconciler(kubeClientSet kubernetes.Interface, rc pb.ResultsClien
 	}
 }
 
+// loggerWithObjectFields returns a logger enriched with namespace, kind, and name fields from the object.
+func loggerWithObjectFields(ctx context.Context, o results.Object) *zap.SugaredLogger {
+	kind := o.GetObjectKind().GroupVersionKind().Kind
+	return logging.FromContext(ctx).With(
+		zap.String("namespace", o.GetNamespace()),
+		zap.String("kind", kind),
+		zap.String("name", o.GetName()),
+	)
+}
+
 // Reconcile handles result/record uploading for the given Run object.
 // If enabled, the object may be deleted upon successful result upload.
 func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
@@ -107,41 +117,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 	if r.cfg != nil && r.cfg.UpdateLogTimeout != nil {
 		ctx, ctxCancel = context.WithTimeout(ctx, *r.cfg.UpdateLogTimeout)
 	}
+	logger := loggerWithObjectFields(ctx, o)
 	// we dont defer the dynamicCancle because golang defers follow a LIFO pattern
 	// and we want to have our context analysis defer function be able to distinguish between
 	// the context channel being closed because of Canceled or DeadlineExceeded
-	logger := logging.FromContext(ctx)
 	defer func() {
 		if ctx == nil {
 			return
 		}
 		ctxErr := ctx.Err()
 		if ctxErr == nil {
-			logger.Warnw("Leaving dynamic Reconciler somehow but the context channel is not closed",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()))
+			logger.Warnw("Leaving dynamic Reconciler somehow but the context channel is not closed")
 			return
 		}
 		if ctxErr == context.Canceled {
-			logger.Debugw("Leaving dynamic Reconciler normally with context properly canceled",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()))
+			logger.Debugw("Leaving dynamic Reconciler normally with context properly canceled")
 			return
 		}
 		if ctxErr == context.DeadlineExceeded {
-			logger.Warnw("Leaving dynamic Reconciler only after context timeout",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()))
+			logger.Warnw("Leaving dynamic Reconciler only after context timeout")
 			return
 		}
 		logger.Warnw("Leaving dynamic Reconciler with unexpected error",
 			zap.String("error", ctxErr.Error()),
-			zap.String("namespace", o.GetNamespace()),
-			zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-			zap.String("name", o.GetName()))
+		)
 	}()
 
 	if o.GetObjectKind().GroupVersionKind().Empty() {
@@ -174,12 +173,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 		if r.cfg == nil || r.cfg.UpdateLogTimeout == nil {
 			// single threaded for unit tests given fragility of fake k8s client
 			if err = r.sendLog(ctx, o); err != nil {
-				logger.Errorw("Error sending log",
-					zap.String("namespace", o.GetNamespace()),
-					zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-					zap.String("name", o.GetName()),
-					zap.Error(err),
-				)
+				logger.Errorw("Error sending log", zap.Error(err))
 			}
 
 		} else {
@@ -206,12 +200,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 
 				go func() {
 					if err = r.sendLog(backgroundCtx, o); err != nil {
-						logger.Errorw("Error sending log",
-							zap.String("namespace", o.GetNamespace()),
-							zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-							zap.String("name", o.GetName()),
-							zap.Error(err),
-						)
+						logger.Errorw("Error sending log", zap.Error(err))
 					}
 					once.Do(func() { close(stopCh) })
 					// TODO once we have the log status available, report the error there for retry if needed
@@ -220,10 +209,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 				select {
 				case <-eventTicker.C:
 					once.Do(func() { close(stopCh) })
-					logger.Warnw("Leaving sendLogs thread only after timeout",
-						zap.String("namespace", o.GetNamespace()),
-						zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-						zap.String("name", o.GetName()))
+					logger.Warnw("Leaving sendLogs thread only after timeout")
 
 				case <-stopCh:
 					// this is safe to call twice, as it does not need to close its buffered channel
@@ -237,22 +223,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 	// CreateEvents if enabled
 	if r.cfg.StoreEvent {
 		if err := r.storeEvents(ctx, o); err != nil {
-			logger.Errorw("Error storing eventlist",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()),
-				zap.Error(err),
-			)
+			logger.Errorw("Error storing eventlist", zap.Error(err))
 			if ctxCancel != nil {
 				ctxCancel()
 			}
 			return err
 		}
-		logger.Debugw("Successfully store eventlist",
-			zap.String("namespace", o.GetNamespace()),
-			zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-			zap.String("name", o.GetName()),
-		)
+		logger.Debugw("Successfully store eventlist")
 	}
 	logger = logger.With(zap.String("results.tekton.dev/result", res.Name),
 		zap.String("results.tekton.dev/record", rec.Name))
@@ -284,7 +261,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, o results.Object) error {
 // addResultsAnnotations adds Results annotations to the object in question if
 // annotation patching is enabled.
 func (r *Reconciler) addResultsAnnotations(ctx context.Context, o results.Object, annotations ...annotation.Annotation) error {
-	logger := logging.FromContext(ctx)
+	logger := loggerWithObjectFields(ctx, o)
 	if r.cfg.GetDisableAnnotationUpdate() { //nolint:gocritic
 		logger.Debug("Skipping CRD annotation patch: annotation update is disabled")
 	} else if annotation.IsPatched(o, annotations...) {
@@ -311,7 +288,7 @@ func (r *Reconciler) addResultsAnnotations(ctx context.Context, o results.Object
 // * The object satisfies all label requirements defined in the supplied config.
 // * The assigned IsReadyForDeletionFunc returns true.
 func (r *Reconciler) deleteUponCompletion(ctx context.Context, o results.Object) error {
-	logger := logging.FromContext(ctx)
+	logger := loggerWithObjectFields(ctx, o)
 
 	gracePeriod := r.cfg.GetCompletedResourceGracePeriod()
 	logger = logger.With(zap.Duration("results.tekton.dev/gracePeriod", gracePeriod))
@@ -421,7 +398,7 @@ func getCompletionTime(object results.Object) (*time.Time, error) {
 
 // sendLog streams logs to the API server
 func (r *Reconciler) sendLog(ctx context.Context, o results.Object) error {
-	logger := logging.FromContext(ctx)
+	logger := loggerWithObjectFields(ctx, o)
 	condition := o.GetStatusCondition().GetCondition(apis.ConditionSucceeded)
 	GVK := o.GetObjectKind().GroupVersionKind()
 	if !GVK.Empty() &&
@@ -442,7 +419,7 @@ func (r *Reconciler) sendLog(ctx context.Context, o results.Object) error {
 			}
 			logName := log.FormatName(result.FormatName(parent, resName), recName)
 			// Update log annotation if it doesn't exist
-			return r.addResultsAnnotations(ctx, o, annotation.Annotation{Name: annotation.Log, Value: logName})
+			return r.addResultsAnnotations(logging.WithLogger(ctx, logger), o, annotation.Annotation{Name: annotation.Log, Value: logName})
 		}
 
 		// Create a log record if the object has/supports logs.
@@ -465,31 +442,18 @@ func (r *Reconciler) sendLog(ctx context.Context, o results.Object) error {
 			logType = tknlog.LogTypePipeline
 		}
 
-		if err := r.addResultsAnnotations(ctx, o, annotation.Annotation{Name: annotation.Log, Value: logName}); err != nil {
+		if err := r.addResultsAnnotations(logging.WithLogger(ctx, logger), o, annotation.Annotation{Name: annotation.Log, Value: logName}); err != nil {
 			return err
 		}
 
-		logger.Debugw("Streaming log started",
-			zap.String("namespace", o.GetNamespace()),
-			zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-			zap.String("name", o.GetName()),
-		)
+		logger.Debugw("Streaming log started")
 
 		err = r.streamLogs(ctx, o, logType, logName)
 		if err != nil {
-			logger.Errorw("Error streaming log",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()),
-				zap.Error(err),
-			)
+			logger.Errorw("Error streaming log", zap.Error(err))
 			// TODO once we have the log status available, report the error there for retry if needed
 		}
-		logger.Infow("Streaming log completed",
-			zap.String("namespace", o.GetNamespace()),
-			zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-			zap.String("name", o.GetName()),
-		)
+		logger.Infow("Streaming log completed")
 
 	}
 
@@ -497,7 +461,7 @@ func (r *Reconciler) sendLog(ctx context.Context, o results.Object) error {
 }
 
 func (r *Reconciler) streamLogs(ctx context.Context, o results.Object, logType, logName string) error {
-	logger := logging.FromContext(ctx)
+	logger := loggerWithObjectFields(ctx, o)
 	logsClient, err := r.resultsClient.UpdateLog(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create UpdateLog client: %w", err)
@@ -549,20 +513,10 @@ func (r *Reconciler) streamLogs(ctx context.Context, o results.Object, logType, 
 	bufStdout := inMemWriteBufferStdout.Bytes()
 	cntStdout, writeStdOutErr := writer.Write(bufStdout)
 	if writeStdOutErr != nil {
-		logger.Warnw("streamLogs in mem bufStdout write err",
-			zap.String("error", writeStdOutErr.Error()),
-			zap.String("namespace", o.GetNamespace()),
-			zap.String("name", o.GetName()),
-		)
+		logger.Warnw("streamLogs in mem bufStdout write err", zap.String("error", writeStdOutErr.Error()))
 	}
 	if cntStdout != len(bufStdout) {
-		logger.Warnw("streamLogs bufStdout write len inconsistent",
-			zap.Int("in", len(bufStdout)),
-			zap.Int("out", cntStdout),
-			zap.String("namespace", o.GetNamespace()),
-			zap.String("name", o.GetName()),
-		)
-
+		logger.Warnw("streamLogs bufStdout write len inconsistent", zap.Int("in", len(bufStdout)), zap.Int("out", cntStdout))
 	}
 	bufStderr := inMemWriteBufferStderr.Bytes()
 	// we do not write these errors to the results api server
@@ -571,15 +525,12 @@ func (r *Reconciler) streamLogs(ctx context.Context, o results.Object, logType, 
 	// we return accordingly
 	if len(bufStderr) > 0 {
 		errStr := string(bufStderr)
-		logger.Warnw("tkn client std error output",
-			zap.String("name", o.GetName()),
-			zap.String("errStr", errStr))
+		logger.Warnw("tkn client std error output", zap.String("errStr", errStr))
 	}
 
 	_, flushErr := writer.Flush()
 	if flushErr != nil {
-		logger.Warnw("flush ret err",
-			zap.String("error", flushErr.Error()))
+		logger.Warnw("flush ret err", zap.String("error", flushErr.Error()))
 		logger.Error(flushErr)
 		return flushErr
 	}
@@ -595,9 +546,7 @@ func (r *Reconciler) streamLogs(ctx context.Context, o results.Object, logType, 
 	// comparing closeErr with io.EOF does not work; and I could not find code / desc etc. constants in the grpc code that handled
 	// the wrapped EOF error we expect to get from grpc when things are "OK"
 	if logSummary, closeErr := logsClient.CloseAndRecv(); closeErr != nil && !strings.Contains(closeErr.Error(), "EOF") {
-		logger.Warnw("CloseAndRecv ret err",
-			zap.String("name", o.GetName()),
-			zap.String("error", closeErr.Error()))
+		logger.Warnw("CloseAndRecv ret err", zap.String("error", closeErr.Error()))
 		if logSummary != nil {
 			logger.Errorw("CloseAndRecv", zap.String("logSummary", logSummary.String()))
 		}
@@ -605,17 +554,14 @@ func (r *Reconciler) streamLogs(ctx context.Context, o results.Object, logType, 
 		return closeErr
 	}
 
-	logger.Debugw("Exiting streamLogs",
-		zap.String("namespace", o.GetNamespace()),
-		zap.String("name", o.GetName()),
-	)
+	logger.Debugw("Exiting streamLogs")
 
 	return nil
 }
 
 // storeEvents streams logs to the API server
 func (r *Reconciler) storeEvents(ctx context.Context, o results.Object) error {
-	logger := logging.FromContext(ctx)
+	logger := loggerWithObjectFields(ctx, o)
 	condition := o.GetStatusCondition().GetCondition(apis.ConditionSucceeded)
 	GVK := o.GetObjectKind().GroupVersionKind()
 	if !GVK.Empty() &&
@@ -632,19 +578,14 @@ func (r *Reconciler) storeEvents(ctx context.Context, o results.Object) error {
 			// It means we have already stored events
 			eventListName := rec.GetName()
 			// Update Events annotation if it doesn't exist
-			return r.addResultsAnnotations(ctx, o, annotation.Annotation{Name: annotation.EventList, Value: eventListName})
+			return r.addResultsAnnotations(logging.WithLogger(ctx, logger), o, annotation.Annotation{Name: annotation.EventList, Value: eventListName})
 		}
 
 		events, err := r.KubeClientSet.CoreV1().Events(o.GetNamespace()).List(ctx, metav1.ListOptions{
 			FieldSelector: "involvedObject.uid=" + string(o.GetUID()),
 		})
 		if err != nil {
-			logger.Errorf("Failed to store events - retrieve",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()),
-				zap.String("err", err.Error()),
-			)
+			logger.Errorf("Failed to store events - retrieve", zap.String("err", err.Error()))
 			return err
 		}
 
@@ -656,13 +597,7 @@ func (r *Reconciler) storeEvents(ctx context.Context, o results.Object) error {
 				FieldSelector: "involvedObject.name=" + podName,
 			})
 			if err != nil {
-				logger.Errorf("Failed to fetch taskrun pod events",
-					zap.String("namespace", o.GetNamespace()),
-					zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-					zap.String("name", o.GetName()),
-					zap.String("podname", podName),
-					zap.String("err", err.Error()),
-				)
+				logger.Errorf("Failed to fetch taskrun pod events", zap.String("podname", podName), zap.String("err", err.Error()))
 			}
 			if podEvents != nil && len(podEvents.Items) > 0 {
 				events.Items = append(events.Items, podEvents.Items...)
@@ -673,12 +608,7 @@ func (r *Reconciler) storeEvents(ctx context.Context, o results.Object) error {
 		data := filterEventList(events)
 		eventList, err := json.Marshal(data)
 		if err != nil {
-			logger.Errorf("Failed to store events - marshal",
-				zap.String("namespace", o.GetNamespace()),
-				zap.String("kind", o.GetObjectKind().GroupVersionKind().Kind),
-				zap.String("name", o.GetName()),
-				zap.String("err", err.Error()),
-			)
+			logger.Errorf("Failed to store events - marshal", zap.String("err", err.Error()))
 			return err
 		}
 
@@ -687,7 +617,7 @@ func (r *Reconciler) storeEvents(ctx context.Context, o results.Object) error {
 			return err
 		}
 
-		if err := r.addResultsAnnotations(ctx, o, annotation.Annotation{Name: annotation.EventList, Value: rec.GetName()}); err != nil {
+		if err := r.addResultsAnnotations(logging.WithLogger(ctx, logger), o, annotation.Annotation{Name: annotation.EventList, Value: rec.GetName()}); err != nil {
 			return err
 		}
 
@@ -716,7 +646,7 @@ func filterEventList(events *v1.EventList) *v1.EventList {
 // addStoreAnnotations adds store annotations to the object in question if
 // annotation patching is enabled.
 func (r *Reconciler) addStoredAnnotations(ctx context.Context, o results.Object) error {
-	logger := logging.FromContext(ctx)
+	logger := loggerWithObjectFields(ctx, o)
 
 	if r.resultsClient.LogsClient != nil {
 		return nil
