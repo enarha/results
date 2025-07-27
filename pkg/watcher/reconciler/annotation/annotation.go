@@ -15,9 +15,13 @@
 package annotation
 
 import (
+	"context"
 	"encoding/json"
 
+	"github.com/tektoncd/results/pkg/watcher/reconciler/client"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"knative.dev/pkg/logging"
 )
 
 const (
@@ -67,57 +71,66 @@ type metadata struct {
 	Annotations map[string]string `json:"annotations"`
 }
 
-// Patch creates a jsonpatch path used for adding result / record identifiers as
-// well as other internal annotations to an object's annotations field.
-func Patch(object metav1.Object, annotations ...Annotation) ([]byte, error) {
+// Patch builds and applies a patch with the given annotations to the object using the provided object client.
+func Patch(
+	ctx context.Context,
+	object metav1.Object,
+	objectClient client.ObjectClient,
+	annotations ...Annotation,
+) error {
+
+	logger := logging.FromContext(ctx)
+
+	if IsPatched(object, annotations...) {
+		logger.Debugf("Skipping CRD annotation patch: annotations are already set ObjectName: %s", object.GetName())
+		return nil
+	}
+
 	data := mergePatch{
 		Metadata: metadata{
 			Annotations: map[string]string{},
 		},
 	}
-
+	// Start with a copy of the current annotations
+	for k, v := range object.GetAnnotations() {
+		data.Metadata.Annotations[k] = v
+	}
+	// Add/overwrite with new annotations
 	for _, annotation := range annotations {
 		if len(annotation.Value) != 0 {
 			data.Metadata.Annotations[annotation.Name] = annotation.Value
 		}
 	}
-
-	if isChildAndDone(object) {
-		data.Metadata.Annotations[ChildReadyForDeletion] = "true"
-	}
-	return json.Marshal(data)
-}
-
-// isChildAndDone returns true if the object in question is a child resource
-// (i.e. has owner references) and it's done, therefore eligible to be patched
-// with the results.tekton.dev/childReadyForDeletion annotation.
-func isChildAndDone(objecct metav1.Object) bool {
-	if len(objecct.GetOwnerReferences()) == 0 {
-		return false
+	patch, err := json.Marshal(data)
+	if err != nil {
+		return err
 	}
 
-	doneObj, ok := objecct.(interface{ IsDone() bool })
-	if !ok {
-		return false
+	err = objectClient.Patch(ctx, object.GetName(), types.MergePatchType, patch, metav1.PatchOptions{})
+
+	// After successful patch, update in-memory object
+	if err == nil {
+		currentAnnotations := object.GetAnnotations()
+		if currentAnnotations == nil {
+			currentAnnotations = make(map[string]string)
+		}
+		for _, ann := range annotations {
+			currentAnnotations[ann.Name] = ann.Value
+		}
+		object.SetAnnotations(currentAnnotations)
 	}
-	return doneObj.IsDone()
+
+	return err
 }
 
 // IsPatched returns true if the object in question contains all relevant
 // annotations or false otherwise.
 func IsPatched(object metav1.Object, annotations ...Annotation) bool {
 	objAnnotations := object.GetAnnotations()
-	if isChildAndDone(object) {
-		if _, found := objAnnotations[ChildReadyForDeletion]; !found {
-			return false
-		}
-	}
-
 	for _, annotation := range annotations {
 		if objAnnotations[annotation.Name] != annotation.Value {
 			return false
 		}
 	}
-
 	return true
 }
