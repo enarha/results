@@ -64,6 +64,7 @@ func NewControllerWithConfig(ctx context.Context, resultsClient pb.ResultsClient
 			SkipStatusUpdates: true,
 			ConfigStore:       configStore,
 			FinalizerName:     "results.tekton.dev/pipelinerun",
+			AgentName:         "tekton-results-watcher",
 		}
 	})
 
