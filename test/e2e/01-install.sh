@@ -26,7 +26,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 
 echo "Installing Tekton Pipelines..."
 TEKTON_PIPELINE_CONFIG=${TEKTON_PIPELINE_CONFIG:-"https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml"}
-kubectl apply --filename "${TEKTON_PIPELINE_CONFIG}"
+#kubectl apply --filename "${TEKTON_PIPELINE_CONFIG}"
 
 echo "Generating DB secret..."
 # Don't fail if the secret isn't created - this can happen if the secret already exists.
