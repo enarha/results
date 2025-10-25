@@ -190,7 +190,17 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 			Parent: parentName(o),
 			Result: res,
 		}
-		return c.ResultsClient.CreateResult(ctx, req, opts...)
+		created, err := c.ResultsClient.CreateResult(ctx, req, opts...)
+		if err != nil {
+			if status.Code(err) == codes.AlreadyExists {
+				logger.Debug("Result was created concurrently - refetching")
+				return c.ResultsClient.GetResult(ctx, &pb.GetResultRequest{
+					Name: resName,
+				}, opts...)
+			}
+			return nil, err
+		}
+		return created, nil
 	}
 
 	// From here on, we're checking to see if there are any updates that need
