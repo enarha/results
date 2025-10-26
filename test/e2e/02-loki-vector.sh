@@ -35,8 +35,8 @@ kubectl apply -f ${ROOT}/test/e2e/loki_vector/loki-vector-api-config.yaml
 # Rollout Restart Results API Deployment
 kubectl rollout restart deployment tekton-results-api -n tekton-pipelines
 
-# Update Results Watcher Deployment Args
-kubectl patch deployment \
+# Update Results Watcher StatefulSet Args
+kubectl patch statefulset \
   tekton-results-watcher \
   --namespace tekton-pipelines \
   --type='json' \
@@ -48,3 +48,5 @@ kubectl patch deployment \
   "-store_event",
   "true"
 ]}]'
+
+kubectl wait statefulset "tekton-results-watcher" --namespace="tekton-pipelines" --for="condition=ready" --timeout="180s"

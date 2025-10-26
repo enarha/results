@@ -35,5 +35,5 @@ helm upgrade --install vector vector/vector --namespace logging --values ${ROOT}
 kubectl apply -f ${ROOT}/test/e2e/blob-logs/vector-minio-config.yaml
 kubectl delete pod $(kubectl get pod -o=name -n tekton-pipelines | grep tekton-results-api | sed "s/^.\{4\}//") -n tekton-pipelines
 kubectl wait deployment "tekton-results-api" --namespace="tekton-pipelines" --for="condition=available" --timeout="120s"
-kubectl delete pod $(kubectl get pod -o=name -n tekton-pipelines | grep tekton-results-watcher | sed "s/^.\{4\}//") -n tekton-pipelines
-kubectl wait deployment "tekton-results-watcher" --namespace="tekton-pipelines" --for="condition=available" --timeout="120s"
+kubectl delete pod -l app.kubernetes.io/name=tekton-results-watcher -n tekton-pipelines --wait=true
+kubectl wait statefulset "tekton-results-watcher" --namespace="tekton-pipelines" --for="condition=ready" --timeout="180s"

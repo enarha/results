@@ -18,6 +18,10 @@ metadata:
   labels:
     app.kubernetes.io/name: tekton-results-leader-election
 data:
+  lease-duration: "60s"
+  renew-deadline: "40s"
+  retry-period: "10s"
+  buckets: "2"
   _example: |
     ################################
     #                              #

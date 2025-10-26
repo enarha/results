@@ -19,7 +19,7 @@ patches:
 - target:
     group: apps
     version: v1
-    kind: Deployment
+    kind: StatefulSet
     name: tekton-results-watcher
   path: watcher.yaml
 - target:

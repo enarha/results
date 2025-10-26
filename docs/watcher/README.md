@@ -13,6 +13,12 @@ The Result Watcher is a Kubernetes Controller that watches for changes to
 certain Tekton types and automatically creates/updates their data in the Result
 API.
 
+## Running multiple replicas
+
+The watcher is built with [`knative.dev/pkg/controller`](https://github.com/knative/pkg/blob/main/leaderelection/doc.go) so it relies on Knative's leader election requirements for safe multi-replica operation. Knative's own [high availability guidance](https://knative.dev/docs/eventing/ha/ha-control-plane/) calls out that controllers should run as StatefulSets to guarantee stable pod identities during leader election. Following those recommendations, the watcher is now deployed as a StatefulSet with two replicas by default, and the provided e2e scripts automatically roll out that topology.
+
+For the replicas to actively process work in parallel we also follow the same Knative guidance and configure the shared `config-leader-election` ConfigMap with `buckets: "2"`, matching the StatefulSet size. Each watcher Pod exposes the `STATEFUL_*` environment variables expected by Knative so every ordinal deterministically owns one bucket, preventing all traffic from piling up on a single leader.
+
 ## Supported Types
 The Watcher currently supports the following types:
 

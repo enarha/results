@@ -89,4 +89,4 @@ done
 echo "Waiting for deployments to be ready..."
 kubectl wait pod "tekton-results-postgres-0" --namespace="tekton-pipelines" --for="condition=Ready" --timeout="120s"
 kubectl wait deployment "tekton-results-api" --namespace="tekton-pipelines" --for="condition=available" --timeout="120s"
-kubectl wait deployment "tekton-results-watcher" --namespace="tekton-pipelines" --for="condition=available" --timeout="120s"
+kubectl wait statefulset "tekton-results-watcher" --namespace="tekton-pipelines" --for="condition=ready" --timeout="180s"

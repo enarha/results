@@ -27,5 +27,5 @@ patches:
       name: api
   - path: watcher.yaml
     target:
-      kind: Deployment
+      kind: StatefulSet
       name: watcher
