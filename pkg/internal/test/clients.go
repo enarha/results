@@ -57,7 +57,7 @@ func NewResultsClient(t *testing.T, config *config.Config, opts ...server.Option
 			log.Printf("error starting result server: %v\n", err)
 		}
 	}()
-	conn, err := grpc.Dial(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/tektoncd/results/pkg/cli/dev/config"
 
@@ -85,13 +84,11 @@ func (f *Factory) ResultsClient(ctx context.Context, overrideAPIAddr string) (pb
 		creds = credentials.NewClientTLSFromCert(certs, f.cfg.SSL.ServerNameOverride)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	addr := f.cfg.Address
 	if overrideAPIAddr != "" {
 		addr = overrideAPIAddr
 	}
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithBlock(), //nolint:staticcheck
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.PerRPCCredentials(oauth.TokenSource{
 			TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}),
@@ -144,13 +141,11 @@ func (f *Factory) LogClient(ctx context.Context, overrideAPIAddr string) (pb.Log
 		creds = credentials.NewClientTLSFromCert(certs, f.cfg.SSL.ServerNameOverride)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	addr := f.cfg.Address
 	if overrideAPIAddr != "" {
 		addr = overrideAPIAddr
 	}
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithBlock(), //nolint:staticcheck
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.PerRPCCredentials(oauth.TokenSource{
 			TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}),
@@ -223,13 +218,11 @@ func (f *Factory) PluginLogsClient(ctx context.Context, overrideAPIAddr string) 
 		creds = credentials.NewClientTLSFromCert(certs, f.cfg.SSL.ServerNameOverride)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	addr := f.cfg.Address
 	if overrideAPIAddr != "" {
 		addr = overrideAPIAddr
 	}
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithBlock(), //nolint:staticcheck
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.PerRPCCredentials(oauth.TokenSource{
 			TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}),

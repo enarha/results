@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"time"
 
 	resultsv1alpha2 "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"golang.org/x/oauth2"
@@ -31,11 +30,8 @@ func NewGRPCClient(serverAddress string, opts ...grpc.DialOption) (GRPCClient, e
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	// target := net.JoinHostPort(u.Hostname(), u.Port())
-	clientConn, err := grpc.DialContext(ctx, u.Host, opts...) //nolint:staticcheck
+	clientConn, err := grpc.NewClient(u.Host, opts...)
 	if err != nil {
 		return nil, err
 	}
