@@ -173,9 +173,7 @@ func connectToAPIServer(ctx context.Context, apiAddr string, authMode string) (*
 	}
 	cred := credentials.NewClientTLSFromCert(certs, "")
 
-	opts := []grpc.DialOption{
-		grpc.WithBlock(),
-	}
+	var opts []grpc.DialOption
 	// Add in additional credentials to requests if desired.
 	switch authMode {
 	case "google":
@@ -200,9 +198,7 @@ func connectToAPIServer(ctx context.Context, apiAddr string, authMode string) (*
 	}
 
 	log.Printf("dialing %s...\n", apiAddr)
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
-	defer cancel()
-	return grpc.DialContext(ctx, apiAddr, opts...)
+	return grpc.NewClient(apiAddr, opts...)
 }
 
 func loadCerts() (*x509.CertPool, error) {
