@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 var (
@@ -72,6 +75,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
+	dialCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := waitForConnReady(dialCtx, conn); err != nil {
+		conn.Close()
+		log.Fatalf("did not connect: %v", err)
+	}
 	defer conn.Close()
 	u := &ui{
 		client: pb.NewResultsClient(conn),
@@ -85,4 +94,27 @@ func main() {
 
 	log.Println("Running on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func waitForConnReady(ctx context.Context, conn *grpc.ClientConn) error {
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
 }

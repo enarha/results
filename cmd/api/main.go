@@ -35,6 +35,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -313,6 +314,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error dialing gRPC endpoint: %v", err)
 	}
+	connectCtx, connectCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer connectCancel()
+	if err := waitForConnReady(connectCtx, clientConn); err != nil {
+		clientConn.Close()
+		log.Fatalf("Error dialing gRPC endpoint: %v", err)
+	}
 	serverMuxOptions = append(serverMuxOptions,
 		runtime.WithHealthzEndpoint(healthpb.NewHealthClient(clientConn)),
 		runtime.WithMetadata(fieldmask.MetadataAnnotator),
@@ -363,6 +370,29 @@ func grpcHandler(grpcServer *grpc.Server, httpHandler http.Handler) http.Handler
 			httpHandler.ServeHTTP(w, r)
 		}
 	}), &http2.Server{})
+}
+
+func waitForConnReady(ctx context.Context, conn *grpc.ClientConn) error {
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
 }
 
 // recoveryHandler returns custom messages when server panics

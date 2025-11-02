@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	resultsv1alpha2 "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"k8s.io/client-go/transport"
 )
@@ -33,6 +35,12 @@ func NewGRPCClient(serverAddress string, opts ...grpc.DialOption) (GRPCClient, e
 	// target := net.JoinHostPort(u.Hostname(), u.Port())
 	clientConn, err := grpc.NewClient(u.Host, opts...)
 	if err != nil {
+		return nil, err
+	}
+	dialCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := waitForConnReady(dialCtx, clientConn); err != nil {
+		clientConn.Close()
 		return nil, err
 	}
 
@@ -84,6 +92,29 @@ func (cc *CustomCredentials) GetRequestMetadata(ctx context.Context, uri ...stri
 // RequireTransportSecurity indicates whether the credentials requires transport security.
 func (cc *CustomCredentials) RequireTransportSecurity() bool {
 	return true
+}
+
+func waitForConnReady(ctx context.Context, conn *grpc.ClientConn) error {
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
 }
 
 func unescapeExtraKey(encodedKey string) string {

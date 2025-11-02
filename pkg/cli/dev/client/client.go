@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/tektoncd/results/pkg/cli/dev/config"
 
@@ -14,6 +16,7 @@ import (
 	pb3 "github.com/tektoncd/results/proto/v1alpha3/results_go_proto"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	v1 "k8s.io/api/authentication/v1"
@@ -98,6 +101,11 @@ func (f *Factory) ResultsClient(ctx context.Context, overrideAPIAddr string) (pb
 		fmt.Printf("Dial: %v\n", err)
 		return nil, err
 	}
+	if err := connectWithTimeout(ctx, conn, 10*time.Second); err != nil {
+		fmt.Printf("Dial: %v\n", err)
+		conn.Close()
+		return nil, err
+	}
 	return pb.NewResultsClient(conn), nil
 }
 
@@ -153,6 +161,11 @@ func (f *Factory) LogClient(ctx context.Context, overrideAPIAddr string) (pb.Log
 	)
 	if err != nil {
 		fmt.Printf("Dial: %v\n", err)
+		return nil, err
+	}
+	if err := connectWithTimeout(ctx, conn, 10*time.Second); err != nil {
+		fmt.Printf("Dial: %v\n", err)
+		conn.Close()
 		return nil, err
 	}
 	return pb.NewLogsClient(conn), nil
@@ -232,6 +245,11 @@ func (f *Factory) PluginLogsClient(ctx context.Context, overrideAPIAddr string) 
 		fmt.Printf("Dial: %v\n", err)
 		return nil, err
 	}
+	if err := connectWithTimeout(ctx, conn, 10*time.Second); err != nil {
+		fmt.Printf("Dial: %v\n", err)
+		conn.Close()
+		return nil, err
+	}
 	return pb3.NewLogsClient(conn), nil
 }
 
@@ -270,4 +288,29 @@ func (f *Factory) token(ctx context.Context) (string, error) {
 	}
 
 	return "", nil
+}
+
+func connectWithTimeout(ctx context.Context, conn *grpc.ClientConn, timeout time.Duration) error {
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := dialCtx.Err(); err != nil {
+				return err
+			}
+			return errors.New("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(dialCtx, state) {
+			if err := dialCtx.Err(); err != nil {
+				return err
+			}
+			return errors.New("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
 }

@@ -15,9 +15,12 @@
 package test
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/tektoncd/results/pkg/api/server/config"
 	"github.com/tektoncd/results/pkg/api/server/logger"
@@ -27,6 +30,7 @@ import (
 	server "github.com/tektoncd/results/pkg/api/server/v1alpha2"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 const (
@@ -61,10 +65,39 @@ func NewResultsClient(t *testing.T, config *config.Config, opts ...server.Option
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
+	dialCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := waitForConnReady(dialCtx, conn); err != nil {
+		conn.Close()
+		t.Fatalf("did not connect: %v", err)
+	}
 	t.Cleanup(func() {
 		s.Stop()
 		lis.Close()
 		conn.Close()
 	})
 	return pb.NewResultsClient(conn), pb.NewLogsClient(conn)
+}
+
+func waitForConnReady(ctx context.Context, conn *grpc.ClientConn) error {
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
 }

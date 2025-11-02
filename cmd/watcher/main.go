@@ -35,6 +35,7 @@ import (
 	v1alpha2pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/credentials/oauth"
@@ -198,7 +199,41 @@ func connectToAPIServer(ctx context.Context, apiAddr string, authMode string) (*
 	}
 
 	log.Printf("dialing %s...\n", apiAddr)
-	return grpc.NewClient(apiAddr, opts...)
+	conn, err := grpc.NewClient(apiAddr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	dialCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer cancel()
+	if err := waitForConnReady(dialCtx, conn); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+func waitForConnReady(ctx context.Context, conn *grpc.ClientConn) error {
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
 }
 
 func loadCerts() (*x509.CertPool, error) {

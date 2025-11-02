@@ -10,13 +10,16 @@ package results_go_proto
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/utilities"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -30,6 +33,29 @@ var _ status.Status
 var _ = runtime.String
 var _ = utilities.NewDoubleArray
 var _ = metadata.Join
+
+func waitForConnReady(ctx context.Context, conn *grpc.ClientConn) error {
+	conn.Connect()
+	state := conn.GetState()
+	for {
+		if state == connectivity.Ready {
+			return nil
+		}
+		if state == connectivity.Shutdown {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection shut down during dial")
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("gRPC connection state unchanged before timeout")
+		}
+		state = conn.GetState()
+	}
+}
 
 func request_Results_CreateResult_0(ctx context.Context, marshaler runtime.Marshaler, client ResultsClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq CreateResultRequest
@@ -1262,6 +1288,12 @@ func RegisterResultsHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeM
 	if err != nil {
 		return err
 	}
+	connectCtx, connectCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer connectCancel()
+	if err = waitForConnReady(connectCtx, conn); err != nil {
+		conn.Close()
+		return err
+	}
 	defer func() {
 		if err != nil {
 			if cerr := conn.Close(); cerr != nil {
@@ -1591,6 +1623,12 @@ var (
 func RegisterLogsHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
 	conn, err := grpc.NewClient(endpoint, opts...)
 	if err != nil {
+		return err
+	}
+	connectCtx, connectCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer connectCancel()
+	if err = waitForConnReady(connectCtx, conn); err != nil {
+		conn.Close()
 		return err
 	}
 	defer func() {
