@@ -86,6 +86,15 @@ func (s *Server) GetResult(ctx context.Context, req *pb.GetResultRequest) (*pb.R
 	}
 	store, err := getResultByParentName(s.db, parent, name)
 	if err != nil {
+		if status.Code(err) == codes.NotFound && s.live != nil {
+			liveResult, liveErr := s.live.GetResult(ctx, req.GetName())
+			if liveErr == nil {
+				return liveResult, nil
+			}
+			if status.Code(liveErr) != codes.NotFound {
+				return nil, liveErr
+			}
+		}
 		return nil, err
 	}
 	return result.ToAPI(store), nil

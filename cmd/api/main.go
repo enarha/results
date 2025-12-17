@@ -60,10 +60,12 @@ import (
 	prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	pipelineclient "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	"github.com/tektoncd/results/pkg/api/server/config"
 	"github.com/tektoncd/results/pkg/api/server/logger"
 	v1alpha2 "github.com/tektoncd/results/pkg/api/server/v1alpha2"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/auth"
+	"github.com/tektoncd/results/pkg/api/server/v1alpha2/live"
 	v1alpha2pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	v1alpha3pb "github.com/tektoncd/results/proto/v1alpha3/results_go_proto"
 	_ "go.uber.org/automaxprocs"
@@ -184,6 +186,22 @@ func main() {
 		}()
 	}
 
+	var (
+		k8sConfig *rest.Config
+	)
+	k8sConfig, err = rest.InClusterConfig()
+	if err != nil {
+		log.Warnf("Kubernetes client configuration not available, live reads disabled: %v", err)
+	} else {
+		// Override k8s client qps/burst settings
+		if qps := serverConfig.K8S_QPS; qps > 0 {
+			k8sConfig.QPS = float32(qps)
+		}
+		if burst := serverConfig.K8S_BURST; burst > 0 {
+			k8sConfig.Burst = burst
+		}
+	}
+
 	// Set grpc worker pool
 	grpcWorkers := serverConfig.GRPC_WORKER_POOL
 	var streamWorkers grpc.ServerOption
@@ -206,19 +224,8 @@ func main() {
 		authCheck = &auth.AllowAll{}
 	} else {
 		log.Info("Kubernetes RBAC authorization check enabled")
-		// Create k8s client
-		k8sConfig, err := rest.InClusterConfig()
-		if err != nil {
-			log.Fatal("Error getting kubernetes client config:", err)
-		}
-		// Override k8s client qps/burts settings
-		qps := serverConfig.K8S_QPS
-		burst := serverConfig.K8S_BURST
-		if qps > 0 {
-			k8sConfig.QPS = (float32)(qps)
-		}
-		if burst > 0 {
-			k8sConfig.Burst = burst
+		if k8sConfig == nil {
+			log.Fatal("Error getting kubernetes client config: not running in a cluster")
 		}
 		k8s, err := kubernetes.NewForConfig(k8sConfig)
 		if err != nil {
@@ -232,8 +239,20 @@ func main() {
 		authCheck = auth.NewRBAC(k8s, auth.WithImpersonation(serverConfig.AUTH_IMPERSONATE))
 	}
 
+	var liveClient *live.Client
+	if serverConfig.ENABLE_LIVE_DATA {
+		if k8sConfig == nil {
+			log.Warn("Live data disabled: Kubernetes client config unavailable")
+		} else if pClient, err := pipelineclient.NewForConfig(k8sConfig); err != nil {
+			log.Warnf("Live Kubernetes client disabled: %v", err)
+		} else {
+			liveClient = live.New(pClient)
+			log.Info("Live data enabled: serving from Kubernetes when configured")
+		}
+	}
+
 	// Register API server(s)
-	v1a2, err := v1alpha2.New(serverConfig, log, db, v1alpha2.WithAuth(authCheck))
+	v1a2, err := v1alpha2.New(serverConfig, log, db, v1alpha2.WithAuth(authCheck), v1alpha2.WithLiveClient(liveClient))
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}

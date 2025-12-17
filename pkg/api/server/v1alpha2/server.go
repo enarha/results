@@ -27,6 +27,7 @@ import (
 	resultscel "github.com/tektoncd/results/pkg/api/server/cel"
 	model "github.com/tektoncd/results/pkg/api/server/db"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/auth"
+	"github.com/tektoncd/results/pkg/api/server/v1alpha2/live"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/plugin"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"gorm.io/gorm"
@@ -52,6 +53,7 @@ type Server struct {
 	recordsEnv      *cel.Env
 	db              *gorm.DB
 	auth            auth.Checker
+	live            *live.Client
 	LogPluginServer *plugin.LogServer
 
 	// testing.
@@ -120,5 +122,12 @@ func WithAuth(c auth.Checker) Option {
 func withGetResultID(f getResultID) Option {
 	return func(s *Server) {
 		s.getResultID = f
+	}
+}
+
+// WithLiveClient configures a live Kubernetes client for the server.
+func WithLiveClient(lc *live.Client) Option {
+	return func(s *Server) {
+		s.live = lc
 	}
 }

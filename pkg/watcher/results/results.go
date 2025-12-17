@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/record"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/result"
+	"github.com/tektoncd/results/pkg/results/namer"
 	"github.com/tektoncd/results/pkg/watcher/convert"
 	"github.com/tektoncd/results/pkg/watcher/reconciler"
 	"github.com/tektoncd/results/pkg/watcher/reconciler/annotation"
@@ -253,63 +254,16 @@ func getTimestamp(c *apis.Condition) *timestamppb.Timestamp {
 	return timestamppb.New(c.LastTransitionTime.Inner.Time)
 }
 
-// resultName gets the result name to use for the given object.
-// The name is derived from a known Tekton annotation if available, else
-// the object's name is used.
 func resultName(o metav1.Object) string {
-	// Special case result annotations, since this should already be the
-	// full result identifier.
-	if v, ok := o.GetAnnotations()[annotation.Result]; ok {
-		return v
-	}
-
-	var part string
-	if v, ok := o.GetLabels()["triggers.tekton.dev/triggers-eventid"]; ok {
-		// Don't prefix trigger events. These are 1) not CRD types, 2) are
-		// intended to be unique identifiers already, and 3) should be applied
-		// to all objects created via trigger templates, so there's no need to
-		// prefix these to avoid collision.
-		part = v
-	} else if len(o.GetOwnerReferences()) > 0 {
-		for _, owner := range o.GetOwnerReferences() {
-			if strings.EqualFold(owner.Kind, "pipelinerun") {
-				part = string(owner.UID)
-				break
-			}
-		}
-	}
-
-	if part == "" {
-		part = defaultName(o)
-	}
-	return result.FormatName(o.GetNamespace(), part)
+	return namer.ResultName(o)
 }
 
 func recordName(parent string, o Object) string {
-	// Attempt to read the record name from annotations only if the object
-	// in question is a top-level record (i.e. it isn't owned by another
-	// object). Otherwise, the annotation containing the record name maybe
-	// was propagated by the owner what causes conflicts while upserting the
-	// object into the API. For further details, please see
-	// https://github.com/tektoncd/results/issues/296.
-	if isTopLevelRecord(o) {
-		if name, ok := o.GetAnnotations()[annotation.Record]; ok {
-			return name
-		}
-	}
-	return record.FormatName(parent, defaultName(o))
+	return namer.RecordName(parent, o)
 }
 
-// parentName returns the parent's name of the result in question. If the
-// results annotation is set, returns the first segment of the result
-// name. Otherwise, returns the object's namespace.
 func parentName(o metav1.Object) string {
-	if value, found := o.GetAnnotations()[annotation.Result]; found {
-		if parts := strings.Split(value, "/"); len(parts) != 0 {
-			return parts[0]
-		}
-	}
-	return o.GetNamespace()
+	return namer.ParentName(o)
 }
 
 // upsertRecord updates or creates a record for the object. If there has been
@@ -354,14 +308,10 @@ func (c *Client) upsertRecord(ctx context.Context, parent string, o Object, opts
 // defaultName is the default Result/Record name that should be used if one is
 // not already associated to the Object.
 func defaultName(o metav1.Object) string {
-	return string(o.GetUID())
+	return namer.DefaultName(o)
 }
 
-// isTopLevelRecord determines whether an Object is a top level Record - e.g. a
-// Record that should be considered the primary record for the result for purposes
-// of timing, status, etc. For example, if a Result contains records for a PipelineRun
-// and TaskRun, the PipelineRun should take precedence.
-// We define an Object to be top level if it does not have any OwnerReferences.
+// isTopLevelRecord determines whether an Object is a top level Record.
 func isTopLevelRecord(o Object) bool {
-	return len(o.GetOwnerReferences()) == 0
+	return namer.IsTopLevel(o)
 }

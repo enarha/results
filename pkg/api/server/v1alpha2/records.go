@@ -118,6 +118,16 @@ func (s *Server) GetRecord(ctx context.Context, req *pb.GetRecordRequest) (*pb.R
 
 	r, err := getRecord(s.db.WithContext(ctx), parent, result, name)
 	if err != nil {
+		if status.Code(err) == codes.NotFound && s.live != nil {
+			liveRecord, liveErr := s.live.GetRecord(ctx, req.GetName())
+			if liveErr == nil {
+				return liveRecord, nil
+			}
+			// Fall back to the original error if live data is also missing.
+			if status.Code(liveErr) != codes.NotFound {
+				return nil, liveErr
+			}
+		}
 		return nil, err
 	}
 	return record.ToAPI(r), nil

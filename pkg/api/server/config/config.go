@@ -67,6 +67,8 @@ type Config struct {
 	LOGGING_PLUGIN_FORWARDER_DELAY_DURATION int64  `mapstructure:"LOGGING_PLUGIN_FORWARDER_DELAY_DURATION"`
 	LOGGING_PLUGIN_QUERY_PARAMS             string `mapstructure:"LOGGING_PLUGIN_QUERY_PARAMS"`
 	LOGGING_PLUGIN_MULTIPART_REGEX          string `mapstructure:"LOGGING_PLUGIN_MULTIPART_REGEX"`
+
+	ENABLE_LIVE_DATA bool `mapstructure:"ENABLE_LIVE_DATA"`
 }
 
 func Get() *Config {
