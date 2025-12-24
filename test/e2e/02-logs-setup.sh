@@ -19,20 +19,32 @@ set -e
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-curl https://dl.min.io/client/mc/release/linux-amd64/mc \
-  --create-dirs \
-  -o $HOME/minio-binaries/mc
+# Deploy local MinIO instance
+echo "Deploying local MinIO..."
+kubectl apply -f ${ROOT}/test/e2e/blob-logs/minio-local.yaml
+kubectl wait --for=condition=available --timeout=120s deployment/minio -n minio
+kubectl wait --for=condition=complete --timeout=120s job/minio-create-bucket -n minio
+
+#curl https://dl.min.io/client/mc/release/linux-amd64/mc \
+#  --create-dirs \
+#  -o $HOME/minio-binaries/mc
 
 chmod +x $HOME/minio-binaries/mc
 export PATH=$PATH:$HOME/minio-binaries/
 
-mc alias set myPlayMinio https://play.min.io:9000  Q3AM3UQ867SPQQA43P2F zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG
+# Port-forward to local MinIO for mc access (optional, for testing)
+# kubectl port-forward -n minio svc/minio 9000:9000 &
+# sleep 2
 
-mc mb myPlayMinio/tekton-logs
+mc alias set myPlayMinio http://localhost:9000 minioadmin minioadmin
 
+#mc mb myPlayMinio/tekton-logs
+
+echo "Installing Vector for log forwarding..."
 helm upgrade --install vector vector/vector --namespace logging --values ${ROOT}/test/e2e/blob-logs/vector-s3.yaml
 
-kubectl apply -f ${ROOT}/test/e2e/blob-logs/vector-minio-config.yaml
+echo "Applying Tekton Results API configuration for local MinIO..."
+kubectl apply -f ${ROOT}/test/e2e/blob-logs/vector-minio-local-config.yaml
 kubectl delete pod $(kubectl get pod -o=name -n tekton-pipelines | grep tekton-results-api | sed "s/^.\{4\}//") -n tekton-pipelines
 kubectl wait deployment "tekton-results-api" --namespace="tekton-pipelines" --for="condition=available" --timeout="120s"
 kubectl delete pod $(kubectl get pod -o=name -n tekton-pipelines | grep tekton-results-watcher | sed "s/^.\{4\}//") -n tekton-pipelines

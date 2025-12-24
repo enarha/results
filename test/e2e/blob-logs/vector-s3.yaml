@@ -47,11 +47,11 @@ customConfig:
       bucket: "tekton-logs"
       inputs: ["remap_app_logs"]
       auth:
-        access_key_id: "Q3AM3UQ867SPQQA43P2F"
-        secret_access_key: "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG"
+        access_key_id: "minioadmin"
+        secret_access_key: "minioadmin"
       compression: "none"
       region: "us-east-1"
-      endpoint: "https://play.min.io:9000"
+      endpoint: "http://minio.minio.svc.cluster.local:9000"
       encoding:
         codec: "text"
       key_prefix: "/logs/{{ `{{ .namespace }}` }}/{{`{{ .result }}`}}/{{`{{ .taskRunUID }}`}}/{{`{{ .container }}`}}"
