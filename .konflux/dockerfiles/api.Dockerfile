@@ -1,3 +1,4 @@
+# Rebuild trigger: 1.15.4 release 2026-01-19
 ARG GO_BUILDER=brew.registry.redhat.io/rh-osbs/openshift-golang-builder:v1.23
 ARG RUNTIME=registry.redhat.io/ubi8/ubi:latest@sha256:00da037bbdbacdeb2bd15c4e8f4a4a89b56063757f14c52ef6e68766831acd7b
 
