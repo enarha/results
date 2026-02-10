@@ -15,7 +15,7 @@ RUN go build -ldflags="-X 'knative.dev/pkg/changeset.rev=$(cat HEAD)'" -mod=vend
     ./cmd/api
 
 FROM $RUNTIME
-ARG VERSION=results-api-1.15.3
+ARG VERSION=results-api-1.15.4
 
 ENV API=/usr/local/bin/results-api \
     KO_APP=/ko-app \

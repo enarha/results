@@ -16,7 +16,7 @@ RUN go build -ldflags="-X 'knative.dev/pkg/changeset.rev=$(cat HEAD)'" -mod=vend
 RUN /bin/sh -c 'echo $CI_RESULTS_UPSTREAM_COMMIT > /tmp/HEAD'
 
 FROM $RUNTIME
-ARG VERSION=results-watcher-1.15.3
+ARG VERSION=results-watcher-1.15.4
 
 ENV WATCHER=/usr/local/bin/openshift-pipelines-results-watcher \
     KO_APP=/ko-app \
