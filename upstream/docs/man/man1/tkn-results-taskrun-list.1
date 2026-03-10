@@ -1,0 +1,128 @@
+.nh
+.TH "TKN-RESULTS" "1" "Aug 2025" "Tekton Results CLI" ""
+
+.SH NAME
+tkn-results-taskrun-list - List TaskRuns in a namespace
+
+
+.SH SYNOPSIS
+\fBtkn-results taskrun list [task-name]\fP
+
+
+.SH DESCRIPTION
+List TaskRuns in a namespace
+
+
+.SH OPTIONS
+\fB-A\fP, \fB--all-namespaces\fP[=false]
+	List TaskRuns from all namespaces
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for list
+
+.PP
+\fB-L\fP, \fB--label\fP=""
+	Filter by label (format: key=value[,key=value...])
+
+.PP
+\fB--limit\fP=50
+	Maximum number of TaskRuns to return (must be between 5 and 1000, default is 50)
+
+.PP
+\fB--pipelinerun\fP=""
+	Filter TaskRuns by PipelineRun name. Note that multiple PipelineRuns can have the same name, so this will return TaskRuns from all PipelineRuns with the matching name.
+
+.PP
+\fB--single-page\fP[=true]
+	Return only a single page of results
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-a\fP, \fB--addr\fP=""
+	[To be deprecated] Result API server address. If not specified, tkn-result would port-forward to service/tekton-results-api-service automatically
+
+.PP
+\fB--api-path\fP=""
+	api path to use (default: value provided in config set command)
+
+.PP
+\fB-t\fP, \fB--authtoken\fP=""
+	[To be deprecated] authorization bearer token to use for authenticated requests
+
+.PP
+\fB-c\fP, \fB--context\fP=""
+	name of the kubeconfig context to use (default: kubectl config current-context)
+
+.PP
+\fB--host\fP=""
+	host to use (default: value provided in config set command)
+
+.PP
+\fB--insecure\fP[=false]
+	[To be deprecated] determines whether to run insecure GRPC tls request
+
+.PP
+\fB--insecure-skip-tls-verify\fP[=false]
+	skip server's certificate validation for requests (default: false)
+
+.PP
+\fB-k\fP, \fB--kubeconfig\fP=""
+	kubectl config file (default: $HOME/.kube/config)
+
+.PP
+\fB-n\fP, \fB--namespace\fP=""
+	namespace to use (default: from $KUBECONFIG)
+
+.PP
+\fB--portforward\fP[=true]
+	[To be deprecated] enable auto portforwarding to tekton-results-api-service, when addr is set and portforward is true, tkn-results will portforward tekton-results-api-service automatically
+
+.PP
+\fB--sa\fP=""
+	[To be deprecated] ServiceAccount to use instead of token for authorization and authentication
+
+.PP
+\fB--sa-ns\fP=""
+	[To be deprecated] ServiceAccount Namespace, if not given, it will be taken from current context
+
+.PP
+\fB--token\fP=""
+	bearer token to use (default: value provided in config set command)
+
+.PP
+\fB--v1alpha2\fP[=false]
+	[To be deprecated] use v1alpha2 API for get log command
+
+
+.SH EXAMPLE
+.EX
+List all TaskRuns in a namespace 'foo':
+    tkn-results taskrun list -n foo
+
+List TaskRuns with a specific label:
+    tkn-results taskrun list -L app=myapp
+
+List TaskRuns with multiple labels:
+    tkn-results taskrun list --label app=myapp,env=prod
+
+List TaskRuns from all namespaces:
+    tkn-results taskrun list -A
+
+List TaskRuns with limit of 20 per page:
+    tkn-results taskrun list --limit=20
+
+List TaskRuns for a specific task:
+    tkn-results taskrun list foo -n namespace
+
+List TaskRuns with partial task name match:
+    tkn-results taskrun list build -n namespace
+
+List TaskRuns for a specific PipelineRun:
+    tkn-results taskrun list --pipelinerun my-pipeline-run -n namespace
+
+.EE
+
+
+.SH SEE ALSO
+\fBtkn-results-taskrun(1)\fP

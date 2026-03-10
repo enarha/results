@@ -1,0 +1,70 @@
+.nh
+.TH "TKN-RESULTS" "1" "Aug 2025" "Tekton Results CLI" ""
+
+.SH NAME
+tkn-results-result-list - [To be deprecated] List Results
+
+
+.SH SYNOPSIS
+**tkn-results result list [flags] 
+
+.PP
+: Parent name to query. This is typically corresponds to a namespace, but may vary depending on the API Server. "-" may be used to query all parents. This will list results for namespaces the token has access to**
+
+
+.SH DESCRIPTION
+[To be deprecated] List Results
+
+
+.SH OPTIONS
+\fB-f\fP, \fB--filter\fP=""
+	[To be deprecated] CEL Filter
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for list
+
+.PP
+\fB-l\fP, \fB--limit\fP=0
+	[To be deprecated] number of items to return. Response may be truncated due to server limits.
+
+.PP
+\fB-o\fP, \fB--output\fP="tab"
+	[To be deprecated] output format. Valid values: tab|textproto|json
+
+.PP
+\fB-p\fP, \fB--page\fP=""
+	[To be deprecated] pagination token to use for next page
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-a\fP, \fB--addr\fP=""
+	[To be deprecated] Result API server address. If not specified, tkn-result would port-forward to service/tekton-results-api-service automatically
+
+.PP
+\fB-t\fP, \fB--authtoken\fP=""
+	[To be deprecated] authorization bearer token to use for authenticated requests
+
+.PP
+\fB--insecure\fP[=false]
+	[To be deprecated] determines whether to run insecure GRPC tls request
+
+.PP
+\fB--portforward\fP[=true]
+	[To be deprecated] enable auto portforwarding to tekton-results-api-service, when addr is set and portforward is true, tkn-results will portforward tekton-results-api-service automatically
+
+.PP
+\fB--sa\fP=""
+	[To be deprecated] ServiceAccount to use instead of token for authorization and authentication
+
+.PP
+\fB--sa-ns\fP=""
+	[To be deprecated] ServiceAccount Namespace, if not given, it will be taken from current context
+
+.PP
+\fB--v1alpha2\fP[=false]
+	[To be deprecated] use v1alpha2 API for get log command
+
+
+.SH SEE ALSO
+\fBtkn-results-result(1)\fP

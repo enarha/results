@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 /*
 Copyright 2019 The Tekton Authors
@@ -22,7 +21,6 @@ package test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -37,7 +35,7 @@ import (
 // otherwise.
 func CreateGCPServiceAccountSecret(t *testing.T, c kubernetes.Interface, namespace string, secretName string) (bool, error) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	file := os.Getenv("GCP_SERVICE_ACCOUNT_KEY_PATH")
@@ -53,7 +51,7 @@ func CreateGCPServiceAccountSecret(t *testing.T, c kubernetes.Interface, namespa
 		},
 	}
 
-	bs, err := ioutil.ReadFile(file)
+	bs, err := os.ReadFile(file)
 	if err != nil {
 		return false, fmt.Errorf("couldn't read secret json from %s: %w", file, err)
 	}

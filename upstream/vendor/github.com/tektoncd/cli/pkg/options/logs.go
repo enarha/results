@@ -26,9 +26,9 @@ import (
 	"github.com/fatih/color"
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/tektoncd/cli/pkg/cli"
-	prdesc "github.com/tektoncd/cli/pkg/pipelinerun/description"
+	pipelinerunpkg "github.com/tektoncd/cli/pkg/pipelinerun"
 	"github.com/tektoncd/cli/pkg/pods/stream"
-	trdesc "github.com/tektoncd/cli/pkg/taskrun/description"
+	taskrunpkg "github.com/tektoncd/cli/pkg/taskrun"
 )
 
 type LogOptions struct {
@@ -38,7 +38,6 @@ type LogOptions struct {
 	PipelineName    string
 	PipelineRunName string
 	TaskName        string
-	ClusterTaskName string
 	TaskrunName     string
 	Stream          *cli.Stream
 	Streamer        stream.NewStreamerFunc
@@ -51,6 +50,7 @@ type LogOptions struct {
 	Tail            int64
 	Timestamps      bool
 	Prefixing       bool
+	ExitWithPrError bool
 	// ActivityTimeout is the amount of time to wait for some activity
 	// (e.g. Pod ready) before giving up.
 	ActivityTimeout time.Duration
@@ -99,8 +99,6 @@ func (opts *LogOptions) Ask(resource string, options []string) error {
 		opts.PipelineRunName = strings.Fields(ans)[0]
 	case ResourceNameTask:
 		opts.TaskName = ans
-	case ResourceNameClusterTask:
-		opts.ClusterTaskName = ans
 	case ResourceNameTaskRun:
 		opts.TaskrunName = strings.Fields(ans)[0]
 	}
@@ -120,7 +118,7 @@ func (opts *LogOptions) FuzzyAsk(resource string, options []string) error {
 		func(i int) string {
 			return strings.Fields(options[i])[0]
 		},
-		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
+		fuzzyfinder.WithPreviewWindow(func(i, _, _ int) string {
 			if i == -1 {
 				return ""
 			}
@@ -131,14 +129,18 @@ func (opts *LogOptions) FuzzyAsk(resource string, options []string) error {
 			}
 
 			bname := strings.Fields(options[i])[0]
+			cs, err := opts.Params.Clients()
+			if err != nil {
+				return fmt.Sprintf("Cannot initialize client: %s", err.Error())
+			}
 			switch resource {
 			case ResourceNameTaskRun:
-				err := trdesc.PrintTaskRunDescription(&s, bname, opts.Params)
+				err := taskrunpkg.PrintTaskRunDescription(s.Out, cs, opts.Params.Namespace(), bname, opts.Params.Time())
 				if err != nil {
 					return fmt.Sprintf("Cannot get taskrun description for %s: %s", bname, err.Error())
 				}
 			case ResourceNamePipelineRun:
-				err := prdesc.PrintPipelineRunDescription(&s, bname, opts.Params)
+				err = pipelinerunpkg.PrintPipelineRunDescription(s.Out, cs, opts.Params.Namespace(), bname, opts.Params.Time())
 				if err != nil {
 					return fmt.Sprintf("Cannot get pipelinerun description for %s: %s", bname, err.Error())
 				}
@@ -156,8 +158,6 @@ func (opts *LogOptions) FuzzyAsk(resource string, options []string) error {
 		opts.PipelineRunName = strings.Fields(ans)[0]
 	case ResourceNameTask:
 		opts.TaskName = ans
-	case ResourceNameClusterTask:
-		opts.ClusterTaskName = ans
 	case ResourceNameTaskRun:
 		opts.TaskrunName = strings.Fields(ans)[0]
 	}

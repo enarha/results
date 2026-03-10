@@ -25,10 +25,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"math/big"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -75,12 +75,14 @@ func NewSelfSignedCACert(cfg Config, key crypto.Signer) (*x509.Certificate, erro
 			CommonName:   cfg.CommonName,
 			Organization: cfg.Organization,
 		},
-		DNSNames:              []string{cfg.CommonName},
 		NotBefore:             notBefore,
 		NotAfter:              now.Add(duration365d * 10).UTC(),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
+	}
+	if len(cfg.CommonName) > 0 {
+		tmpl.DNSNames = []string{cfg.CommonName}
 	}
 
 	certDERBytes, err := x509.CreateCertificate(cryptorand.Reader, &tmpl, &tmpl, key.Public(), key)
@@ -113,9 +115,9 @@ func GenerateSelfSignedCertKeyWithFixtures(host string, alternateIPs []net.IP, a
 	certFixturePath := filepath.Join(fixtureDirectory, baseName+".crt")
 	keyFixturePath := filepath.Join(fixtureDirectory, baseName+".key")
 	if len(fixtureDirectory) > 0 {
-		cert, err := ioutil.ReadFile(certFixturePath)
+		cert, err := os.ReadFile(certFixturePath)
 		if err == nil {
-			key, err := ioutil.ReadFile(keyFixturePath)
+			key, err := os.ReadFile(keyFixturePath)
 			if err == nil {
 				return cert, key, nil
 			}
@@ -210,10 +212,10 @@ func GenerateSelfSignedCertKeyWithFixtures(host string, alternateIPs []net.IP, a
 	}
 
 	if len(fixtureDirectory) > 0 {
-		if err := ioutil.WriteFile(certFixturePath, certBuffer.Bytes(), 0644); err != nil {
+		if err := os.WriteFile(certFixturePath, certBuffer.Bytes(), 0644); err != nil {
 			return nil, nil, fmt.Errorf("failed to write cert fixture to %s: %v", certFixturePath, err)
 		}
-		if err := ioutil.WriteFile(keyFixturePath, keyBuffer.Bytes(), 0644); err != nil {
+		if err := os.WriteFile(keyFixturePath, keyBuffer.Bytes(), 0600); err != nil {
 			return nil, nil, fmt.Errorf("failed to write key fixture to %s: %v", certFixturePath, err)
 		}
 	}

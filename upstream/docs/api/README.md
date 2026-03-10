@@ -107,7 +107,7 @@ is used to refine access to the APIs.
 
   ```yaml
   apiVersion: rbac.authorization.k8s.io/v1
-  kind: RoleBinding
+  kind: ClusterRoleBinding
   metadata:
     name: tekton-results-user
     namespace: user-namespace
@@ -117,7 +117,7 @@ is used to refine access to the APIs.
       namespace: user-namespace
   roleRef:
     apiGroup: rbac.authorization.k8s.io
-    kind: Role
+    kind: ClusterRole
     name: tekton-results-readonly
   ```
 
@@ -222,9 +222,13 @@ Here is the mapping between the Record JSON/protobuf fields and the CEL referenc
 
 Possible values for `data_type` and `summary.type` (for Result) are:
 
-- `tekton.dev/v1beta1.TaskRun` or `TASK_RUN`
-- `tekton.dev/v1beta1.PipelineRun` or `PIPELINE_RUN`
-- `results.tekton.dev/v1alpha2.Log`
+- `tekton.dev/v1beta1.TaskRun` or `TASK_RUN` - This is only for older records.
+- `tekton.dev/v1beta1.PipelineRun` or `PIPELINE_RUN` - This is only for older records.
+- `tekton.dev/v1.TaskRun` or `TASK_RUN`
+- `tekton.dev/v1.PipelineRun` or `PIPELINE_RUN`
+- `results.tekton.dev/v1alpha2.Log` - This is only for older Log records.
+- `results.tekton.dev/v1alpha3.Log`
+- `results.tekton.dev/v1.EventList`
 
 #### The `data` field in Record
 
@@ -297,7 +301,7 @@ This is directly mappable to the YAML notation we generally use.
       {
         "kind": "TaskRun",
         "name": "hello-hello",
-        "apiVersion": "tekton.dev/v1beta1",
+        "apiVersion": "tekton.dev/v1",
         "pipelineTaskName": "hello"
       }
     ]
@@ -315,7 +319,7 @@ This is directly mappable to the YAML notation we generally use.
       "results.tekton.dev/result": "default/results/1638b693-844d-4f13-b767-d7d84ac4ab3d",
       "results.tekton.dev/resultAnnotations": "{\"repo\": \"tektoncd/results\", \"commit\": \"1a6b908\"}",
       "results.tekton.dev/recordSummaryAnnotations": "{\"foo\": \"bar\"}",
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"tekton.dev/v1beta1\",\"kind\":\"PipelineRun\",\"metadata\":{\"annotations\":{\"results.tekton.dev/recordSummaryAnnotations\":\"{\\\"foo\\\": \\\"bar\\\"}\",\"results.tekton.dev/resultAnnotations\":\"{\\\"repo\\\": \\\"tektoncd/results\\\", \\\"commit\\\": \\\"1a6b908\\\"}\"},\"name\":\"hello\",\"namespace\":\"default\"},\"spec\":{\"pipelineSpec\":{\"tasks\":[{\"name\":\"hello\",\"taskSpec\":{\"steps\":[{\"image\":\"ubuntu\",\"name\":\"hello\",\"script\":\"echo hello world!\"}]}}]}}}\n"
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"tekton.dev/v1\",\"kind\":\"PipelineRun\",\"metadata\":{\"annotations\":{\"results.tekton.dev/recordSummaryAnnotations\":\"{\\\"foo\\\": \\\"bar\\\"}\",\"results.tekton.dev/resultAnnotations\":\"{\\\"repo\\\": \\\"tektoncd/results\\\", \\\"commit\\\": \\\"1a6b908\\\"}\"},\"name\":\"hello\",\"namespace\":\"default\"},\"spec\":{\"pipelineSpec\":{\"tasks\":[{\"name\":\"hello\",\"taskSpec\":{\"steps\":[{\"image\":\"ubuntu\",\"name\":\"hello\",\"script\":\"echo hello world!\"}]}}]}}}\n"
     },
     "managedFields": [
       {
@@ -330,7 +334,7 @@ This is directly mappable to the YAML notation we generally use.
           }
         },
         "operation": "Update",
-        "apiVersion": "tekton.dev/v1beta1",
+        "apiVersion": "tekton.dev/v1",
         "fieldsType": "FieldsV1"
       },
       {
@@ -354,7 +358,7 @@ This is directly mappable to the YAML notation we generally use.
           }
         },
         "operation": "Update",
-        "apiVersion": "tekton.dev/v1beta1",
+        "apiVersion": "tekton.dev/v1",
         "fieldsType": "FieldsV1"
       },
       {
@@ -369,7 +373,7 @@ This is directly mappable to the YAML notation we generally use.
           }
         },
         "operation": "Update",
-        "apiVersion": "tekton.dev/v1beta1",
+        "apiVersion": "tekton.dev/v1",
         "fieldsType": "FieldsV1"
       },
       {
@@ -389,7 +393,7 @@ This is directly mappable to the YAML notation we generally use.
           }
         },
         "operation": "Update",
-        "apiVersion": "tekton.dev/v1beta1",
+        "apiVersion": "tekton.dev/v1",
         "fieldsType": "FieldsV1",
         "subresource": "status"
       }
@@ -397,7 +401,7 @@ This is directly mappable to the YAML notation we generally use.
     "resourceVersion": "1567",
     "creationTimestamp": "2023-08-22T09:08:59Z"
   },
-  "apiVersion": "tekton.dev/v1beta1"
+  "apiVersion": "tekton.dev/v1"
 }
 ```
 
@@ -482,12 +486,12 @@ is a list of operators that can be used in CEL expressions:
 
 | Operator                | Description          | Example                                                                                        |
 | ----------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
-| `==`                    | Equal to             | `data_type == "tekton.dev/v1beta1.TaskRun"`                                                    |
+| `==`                    | Equal to             | `data_type == "tekton.dev/v1.TaskRun"`                                                    |
 | `!=`                    | Not equal to         | `summary.status != SUCCESS`                                                                  |
 | `IN`                    | In a list            | `data.metadata.name in ['hello', 'foo', 'bar']`                                                |
 | `!`                     | Negation             | `!(data.status.name in ['hello', 'foo', 'bar'])`                                               |
-| `&&`                    | Logical AND          | `data_type == "tekton.dev/v1beta1.TaskRun" && name.startsWith("foo/results/bar")`              |
-| `\|\|`                  | Logical OR           | `data_type == "tekton.dev/v1beta1.TaskRun" \|\| data_type == "tekton.dev/v1beta1.PipelineRun"` |
+| `&&`                    | Logical AND          | `data_type == "tekton.dev/v1.TaskRun" && name.startsWith("foo/results/bar")`              |
+| `\|\|`                  | Logical OR           | `data_type == "tekton.dev/v1.TaskRun" \|\| data_type == "tekton.dev/v1.PipelineRun"` |
 | `+`, `-`, `*`, `/`, `%` | Arithmetic operators | `data.status.completionTime - data.status.startTime > duration('5m')`                          |
 | `>`, `>=`, `<`, `<=`    | Comparison operators | `data.status.completionTime > data.status.startTime`                                           |
 
@@ -571,6 +575,33 @@ You must be providing the correct filter for the correct resource.
 | Get the Results of all the Runs that failed                                                               | `!(summary.status == SUCCESS)`                                                                                   |
 | Get all the Records of the Runs that failed                                                               | `!(data.status.conditions[0].status == 'True')`                                                                    |
 | Get all the Records of the PipelineRuns which had 3 or more tasks                                         | `size(data.status.pipelineSpec.tasks) >= 3 && data_type == 'PIPELINE_RUN'`                                         |
+
+## Filtering Response
+
+Google's [AIP-157](https://google.aip.dev/157) is implemented in the all the APIs and allows the response to be filtered according to user need.
+
+### How to use
+A URL parameter called `fields`, containing the paths to the items required in the response needs to be sent along with the request. For gRPC requests this should be sent in the **header**. <br>
+The response will then contain only the elements specified by the paths. Leaving the field blank or not sending the header will return the whole response. <br>
+
+To enable this feature add `PartialResponse=true` in the `FEATURE_GATES` section in the config. 
+
+```fields: records.name, records.data.value.metadata.name```<br><br>
+This will only return `name` and `metadata` in the response. If a path is not valid in the proto, it will be ignored. If a path is not valid in a JSON field, the path will appear in the response with a `null` value. <br>
+Filtering a JSON array is **NOT** supported at the moment.
+
+### Examples
+```shell
+curl -kG \
+--data-urlencode "fields=records.name, records.data.value.metadata" \
+http://localhost:8080/apis/results.tekton.dev/v1alpha2/parents/default/results/-/records
+```
+```shell
+grpcurl --insecure \
+-H 'fields: records.name, records.data.value.metadata' \
+-d '{"parent": "default/results/-"}' \
+results.tekton.dev:8080 tekton.results.v1alpha2.Results/ListRecords
+```
 
 ## Ordering
 

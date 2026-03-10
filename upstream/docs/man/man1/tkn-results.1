@@ -1,0 +1,65 @@
+.nh
+.TH "TKN-RESULTS" "1" "Aug 2025" "Tekton Results CLI" ""
+
+.SH NAME
+tkn-results - Tekton Results CLI
+
+
+.SH SYNOPSIS
+\fBtkn-results\fP
+
+
+.SH DESCRIPTION
+Command-line interface (CLI) designed to interact with Tekton Results. This CLI provides tools to configure how you interact with the Tekton Results API server, query TaskRuns and PipelineRuns and their associated data.
+
+.PP
+The following commands are supported:
+  config        Manage CLI configuration for Results:
+                - set:  Configure the CLI to connect to a Tekton Results instance.
+                - view: Display the current CLI configuration.
+                - reset: Reset the CLI configuration to defaults.
+  taskrun       Query TaskRuns stored in Tekton Results:
+                - list:  List TaskRun with filtering options.
+                - describe:  Show detailed information about a specific TaskRun.
+                - logs: Get logs for a TaskRun.
+  pipelinerun   Query PipelineRuns stored in Tekton Results:
+                - list:  List PipelineRuns with filtering options.
+                - describe:  Show detailed information about a specific PipelineRun.
+                - logs: Get logs for a PipelineRun.
+
+
+.SH OPTIONS
+\fB-a\fP, \fB--addr\fP=""
+	[To be deprecated] Result API server address. If not specified, tkn-result would port-forward to service/tekton-results-api-service automatically
+
+.PP
+\fB-t\fP, \fB--authtoken\fP=""
+	[To be deprecated] authorization bearer token to use for authenticated requests
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for tkn-results
+
+.PP
+\fB--insecure\fP[=false]
+	[To be deprecated] determines whether to run insecure GRPC tls request
+
+.PP
+\fB--portforward\fP[=true]
+	[To be deprecated] enable auto portforwarding to tekton-results-api-service, when addr is set and portforward is true, tkn-results will portforward tekton-results-api-service automatically
+
+.PP
+\fB--sa\fP=""
+	[To be deprecated] ServiceAccount to use instead of token for authorization and authentication
+
+.PP
+\fB--sa-ns\fP=""
+	[To be deprecated] ServiceAccount Namespace, if not given, it will be taken from current context
+
+.PP
+\fB--v1alpha2\fP[=false]
+	[To be deprecated] use v1alpha2 API for get log command
+
+
+.SH SEE ALSO
+\fBtkn-results-config(1)\fP, \fBtkn-results-logs(1)\fP, \fBtkn-results-pipelinerun(1)\fP, \fBtkn-results-records(1)\fP, \fBtkn-results-result(1)\fP, \fBtkn-results-taskrun(1)\fP

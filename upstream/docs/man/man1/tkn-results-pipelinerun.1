@@ -1,0 +1,100 @@
+.nh
+.TH "TKN-RESULTS" "1" "Aug 2025" "Tekton Results CLI" ""
+
+.SH NAME
+tkn-results-pipelinerun - Query PipelineRuns
+
+
+.SH SYNOPSIS
+\fBtkn-results pipelinerun\fP
+
+
+.SH DESCRIPTION
+Query PipelineRuns stored in Tekton Results.
+
+.PP
+This command allows you to list PipelineRuns stored in Tekton Results.
+You can filter results by namespace, labels and other criteria.
+
+.PP
+Examples:
+  # List PipelineRuns in a namespace
+  tkn-results pipelinerun list -n default
+
+.PP
+# List PipelineRuns with a specific label
+  tkn-results pipelinerun list -L app=myapp
+
+.PP
+# List PipelineRuns from all namespaces
+  tkn-results pipelinerun list -A
+
+.PP
+# List PipelineRuns with limit
+  tkn-results pipelinerun list --limit=20
+
+
+.SH OPTIONS
+\fB--api-path\fP=""
+	api path to use (default: value provided in config set command)
+
+.PP
+\fB-c\fP, \fB--context\fP=""
+	name of the kubeconfig context to use (default: kubectl config current-context)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for pipelinerun
+
+.PP
+\fB--host\fP=""
+	host to use (default: value provided in config set command)
+
+.PP
+\fB--insecure-skip-tls-verify\fP[=false]
+	skip server's certificate validation for requests (default: false)
+
+.PP
+\fB-k\fP, \fB--kubeconfig\fP=""
+	kubectl config file (default: $HOME/.kube/config)
+
+.PP
+\fB-n\fP, \fB--namespace\fP=""
+	namespace to use (default: from $KUBECONFIG)
+
+.PP
+\fB--token\fP=""
+	bearer token to use (default: value provided in config set command)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB-a\fP, \fB--addr\fP=""
+	[To be deprecated] Result API server address. If not specified, tkn-result would port-forward to service/tekton-results-api-service automatically
+
+.PP
+\fB-t\fP, \fB--authtoken\fP=""
+	[To be deprecated] authorization bearer token to use for authenticated requests
+
+.PP
+\fB--insecure\fP[=false]
+	[To be deprecated] determines whether to run insecure GRPC tls request
+
+.PP
+\fB--portforward\fP[=true]
+	[To be deprecated] enable auto portforwarding to tekton-results-api-service, when addr is set and portforward is true, tkn-results will portforward tekton-results-api-service automatically
+
+.PP
+\fB--sa\fP=""
+	[To be deprecated] ServiceAccount to use instead of token for authorization and authentication
+
+.PP
+\fB--sa-ns\fP=""
+	[To be deprecated] ServiceAccount Namespace, if not given, it will be taken from current context
+
+.PP
+\fB--v1alpha2\fP[=false]
+	[To be deprecated] use v1alpha2 API for get log command
+
+
+.SH SEE ALSO
+\fBtkn-results(1)\fP, \fBtkn-results-pipelinerun-describe(1)\fP, \fBtkn-results-pipelinerun-list(1)\fP, \fBtkn-results-pipelinerun-logs(1)\fP

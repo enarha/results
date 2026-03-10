@@ -18,6 +18,7 @@ package v1
 
 import (
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/internal/checksum"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -35,6 +36,7 @@ import (
 // output resources the Task requires.
 //
 // +k8s:openapi-gen=true
+// +kubebuilder:storageversion
 type Task struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
@@ -52,15 +54,42 @@ func (*Task) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind(pipeline.TaskControllerName)
 }
 
+// Checksum computes the sha256 checksum of the task object.
+// Prior to computing the checksum, it performs some preprocessing on the
+// metadata of the object where it removes system provided annotations.
+// Only the name, namespace, generateName, user-provided labels and annotations
+// and the taskSpec are included for the checksum computation.
+func (t *Task) Checksum() ([]byte, error) {
+	objectMeta := checksum.PrepareObjectMeta(t)
+	preprocessedTask := Task{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "tekton.dev/v1",
+			Kind:       "Task"},
+		ObjectMeta: objectMeta,
+		Spec:       t.Spec,
+	}
+	sha256Checksum, err := checksum.ComputeSha256Checksum(preprocessedTask)
+	if err != nil {
+		return nil, err
+	}
+	return sha256Checksum, nil
+}
+
+// +listType=atomic
+type Volumes []corev1.Volume
+
 // TaskSpec defines the desired state of Task.
 type TaskSpec struct {
-
 	// Params is a list of input parameters required to run the task. Params
 	// must be supplied as inputs in TaskRuns unless they declare a default
 	// value.
 	// +optional
-	// +listType=atomic
-	Params []ParamSpec `json:"params,omitempty"`
+	Params ParamSpecs `json:"params,omitempty"`
+
+	// DisplayName is a user-facing name of the task that may be
+	// used to populate a UI.
+	// +optional
+	DisplayName string `json:"displayName,omitempty"`
 
 	// Description is a user-facing description of the task that may be
 	// used to populate a UI.
@@ -74,8 +103,10 @@ type TaskSpec struct {
 
 	// Volumes is a collection of volumes that are available to mount into the
 	// steps of the build.
-	// +listType=atomic
-	Volumes []corev1.Volume `json:"volumes,omitempty"`
+	// See Pod.spec.volumes (API version: v1)
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Volumes Volumes `json:"volumes,omitempty"`
 
 	// StepTemplate can be used as the basis for all step containers within the
 	// Task, so that the steps inherit settings on the base container.
@@ -103,3 +134,9 @@ type TaskList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Task `json:"items"`
 }
+
+// StepList is a list of Steps
+type StepList []Step
+
+// SidecarList is a list of Sidecars
+type SidecarList []Sidecar

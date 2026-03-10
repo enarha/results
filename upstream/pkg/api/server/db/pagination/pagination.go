@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package pagination provides utilities for paginating database query results.
 package pagination
 
 import (
@@ -71,11 +72,11 @@ type Batcher struct {
 }
 
 // NewBatcher creates a new batcher for the given requested page size.
-func NewBatcher(want, min, max int) *Batcher {
+func NewBatcher(want, mini, maxi int) *Batcher {
 	return &Batcher{
 		want:  want,
-		min:   min,
-		max:   max,
+		min:   mini,
+		max:   maxi,
 		ratio: 1,
 	}
 }

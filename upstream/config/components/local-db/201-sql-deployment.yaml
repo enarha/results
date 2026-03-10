@@ -38,9 +38,11 @@ spec:
       labels:
         app.kubernetes.io/name: tekton-results-postgres
     spec:
+      securityContext:
+        fsGroup: 1001
       containers:
       - name: postgres
-        image: bitnami/postgresql@sha256:35c57c2abb3775004d4a247b1119b2e436b0ef620c9236c64aebce373b58ff9a # 13.12.0
+        image: bitnami/postgresql@sha256:ac8dd0d6512c4c5fb146c16b1c5f05862bd5f600d73348506ab4252587e7fcc6 # 17.5.0
         envFrom:
           - configMapRef:
               name: tekton-results-postgres
@@ -51,18 +53,32 @@ spec:
           name: postgredb
         volumeMounts:
         - name: postgredb
-          mountPath: /bitnami/postgresql
+          mountPath: /bitnami/postgresql  # Persistent volume for PostgreSQL data
+        - name: tmp
+          mountPath: /tmp  # Writable tmp directory for general temp file usage
+        - name: postgresql-conf
+          mountPath: /opt/bitnami/postgresql/conf  # Writable config dir (e.g., pg_hba.conf)
+        - name: postgresql-tmp
+          mountPath: /opt/bitnami/postgresql/tmp  # Bitnami internal marker and temp files
         securityContext:
           seccompProfile:
             type: RuntimeDefault
           runAsNonRoot: true
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop:
               - ALL
             add:
               - NET_BIND_SERVICE
-  volumeClaimTemplates:
+      volumes: # Writable ephemeral volumes needed due to readOnlyRootFilesystem: true
+      - name: tmp
+        emptyDir: {}
+      - name: postgresql-conf
+        emptyDir: {}
+      - name: postgresql-tmp
+        emptyDir: {}
+  volumeClaimTemplates: # Persistent volume for actual PostgreSQL database data
   - metadata:
       name: postgredb
     spec:

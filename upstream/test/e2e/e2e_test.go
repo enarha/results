@@ -45,9 +45,8 @@ import (
 	"os"
 	"path"
 
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	tektonv1beta1client "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/typed/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	tektonv1client "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/typed/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,6 +78,8 @@ var (
 	serverName    string
 	serverAddress string
 )
+
+//lint:ignore SA1019
 
 func init() {
 	certPath := os.Getenv("SSL_CERT_PATH")
@@ -117,7 +118,7 @@ func init() {
 
 func TestTaskRun(t *testing.T) {
 	ctx := context.Background()
-	tr := new(tektonv1beta1.TaskRun)
+	tr := new(tektonv1.TaskRun)
 	b, err := os.ReadFile("testdata/taskrun.yaml")
 	if err != nil {
 		t.Fatalf("Error reading file: %v", err)
@@ -138,19 +139,20 @@ func TestTaskRun(t *testing.T) {
 
 	gc, _ := resultsClient(t, allNamespacesReadAccessTokenFile, nil)
 
-	var resName, recName string
+	var resName, recName, eventName string
 
 	// Wait for Result ID to show up.
 	t.Run("check annotations", func(t *testing.T) {
-		if err := wait.PollImmediate(1*time.Second, 1*time.Minute, func() (done bool, err error) {
+		if err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 1*time.Minute, true, func(ctx context.Context) (done bool, err error) {
 			tr, err := tc.TaskRuns(defaultNamespace).Get(ctx, tr.GetName(), metav1.GetOptions{})
 			if err != nil {
 				t.Fatalf("Error getting TaskRun: %v", err)
 			}
-			var resAnnotation, recAnnotation bool
+			var resAnnotation, recAnnotation, eventAnnotation bool
 			resName, resAnnotation = tr.GetAnnotations()["results.tekton.dev/result"]
 			recName, recAnnotation = tr.GetAnnotations()["results.tekton.dev/record"]
-			if resAnnotation && recAnnotation {
+			eventName, eventAnnotation = tr.GetAnnotations()["results.tekton.dev/eventlist"]
+			if resAnnotation && recAnnotation && eventAnnotation {
 				return true, nil
 			}
 			return false, nil
@@ -160,7 +162,7 @@ func TestTaskRun(t *testing.T) {
 	})
 
 	t.Run("check deletion", func(t *testing.T) {
-		if err := wait.PollImmediate(1*time.Second, 1*time.Minute, func() (done bool, err error) {
+		if err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 1*time.Minute, true, func(ctx context.Context) (done bool, err error) {
 			_, err = tc.TaskRuns(defaultNamespace).Get(ctx, tr.GetName(), metav1.GetOptions{})
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
@@ -194,11 +196,21 @@ func TestTaskRun(t *testing.T) {
 			t.Errorf("Error getting Record: %v", err)
 		}
 	})
+
+	t.Run("check event record", func(t *testing.T) {
+		if eventName == "" {
+			t.Skip("Event Record name not found")
+		}
+		_, err = gc.GetRecord(context.Background(), &resultsv1alpha2.GetRecordRequest{Name: eventName})
+		if err != nil {
+			t.Errorf("Error getting Event Record: %v", err)
+		}
+	})
 }
 
 func TestPipelineRun(t *testing.T) {
 	ctx := context.Background()
-	pr := new(tektonv1beta1.PipelineRun)
+	pr := new(tektonv1.PipelineRun)
 	b, err := os.ReadFile("testdata/pipelinerun.yaml")
 	if err != nil {
 		t.Fatalf("Error reading file: %v", err)
@@ -218,19 +230,20 @@ func TestPipelineRun(t *testing.T) {
 
 	gc, _ := resultsClient(t, allNamespacesReadAccessTokenFile, nil)
 
-	var resName, recName string
+	var resName, recName, eventName string
 
 	t.Run("check annotations", func(t *testing.T) {
 		// Wait for Result ID to show up.
-		if err := wait.PollImmediate(1*time.Second, 1*time.Minute, func() (done bool, err error) {
+		if err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 1*time.Minute, true, func(ctx context.Context) (done bool, err error) {
 			pr, err := tc.PipelineRuns(defaultNamespace).Get(ctx, pr.GetName(), metav1.GetOptions{})
 			if err != nil {
 				t.Fatalf("Error getting PipelineRun: %v", err)
 			}
-			var resAnnotation, recAnnotation bool
+			var resAnnotation, recAnnotation, eventAnnotation bool
 			resName, resAnnotation = pr.GetAnnotations()["results.tekton.dev/result"]
 			recName, recAnnotation = pr.GetAnnotations()["results.tekton.dev/record"]
-			if resAnnotation && recAnnotation {
+			eventName, eventAnnotation = pr.GetAnnotations()["results.tekton.dev/eventlist"]
+			if resAnnotation && recAnnotation && eventAnnotation {
 				return true, nil
 			}
 			return false, nil
@@ -240,7 +253,7 @@ func TestPipelineRun(t *testing.T) {
 	})
 
 	t.Run("check deletion", func(t *testing.T) {
-		if err := wait.PollImmediate(1*time.Second, 1*time.Minute, func() (done bool, err error) {
+		if err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 1*time.Minute, true, func(ctx context.Context) (done bool, err error) {
 			_, err = tc.PipelineRuns(defaultNamespace).Get(ctx, pr.GetName(), metav1.GetOptions{})
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
@@ -275,6 +288,16 @@ func TestPipelineRun(t *testing.T) {
 		}
 	})
 
+	t.Run("check event record", func(t *testing.T) {
+		if eventName == "" {
+			t.Skip("Event Record name not found")
+		}
+		_, err = gc.GetRecord(context.Background(), &resultsv1alpha2.GetRecordRequest{Name: eventName})
+		if err != nil {
+			t.Errorf("Error getting Event Record: %v", err)
+		}
+	})
+
 	t.Run("result data consistency", func(t *testing.T) {
 		result, err := gc.GetResult(context.Background(), &resultsv1alpha2.GetResultRequest{
 			Name: resName,
@@ -285,8 +308,10 @@ func TestPipelineRun(t *testing.T) {
 
 		t.Run("Result and RecordSummary Annotations were set accordingly", func(t *testing.T) {
 			if diff := cmp.Diff(map[string]string{
-				"repo":   "tektoncd/results",
-				"commit": "1a6b908",
+				"repo":                 "tektoncd/results",
+				"object.metadata.name": "hello",
+				"commit":               "1a6b908",
+				"tekton.dev/pipeline":  "hello",
 			}, result.Annotations); diff != "" {
 				t.Errorf("Result.Annotations: mismatch (-want +got):\n%s", diff)
 			}
@@ -312,7 +337,7 @@ func TestPipelineRun(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var pipelineRun v1beta1.PipelineRun
+			var pipelineRun tektonv1.PipelineRun
 			if err := json.Unmarshal(record.Data.Value, &pipelineRun); err != nil {
 				t.Fatal(err)
 			}
@@ -321,8 +346,8 @@ func TestPipelineRun(t *testing.T) {
 				t.Fatal("Want PipelineRun to be done, but it isn't")
 			}
 
-			wantReason := v1beta1.PipelineRunReasonSuccessful
-			if gotReason := pipelineRun.Status.GetCondition(apis.ConditionSucceeded).GetReason(); wantReason != v1beta1.PipelineRunReason(gotReason) {
+			wantReason := tektonv1.PipelineRunReasonSuccessful
+			if gotReason := pipelineRun.Status.GetCondition(apis.ConditionSucceeded).GetReason(); wantReason != tektonv1.PipelineRunReason(gotReason) {
 				t.Fatalf("PipelineRun: want condition reason %s, but got %s", wantReason, gotReason)
 			}
 		})
@@ -341,10 +366,10 @@ func clientConfig(t *testing.T) *rest.Config {
 	return config
 }
 
-func tektonClient(t *testing.T) *tektonv1beta1client.TektonV1beta1Client {
+func tektonClient(t *testing.T) *tektonv1client.TektonV1Client {
 	t.Helper()
 
-	return tektonv1beta1client.NewForConfigOrDie(clientConfig(t))
+	return tektonv1client.NewForConfigOrDie(clientConfig(t))
 }
 
 func resultsClient(t *testing.T, tokenFile string, impersonationConfig *transport.ImpersonationConfig) (client.GRPCClient, client.RESTClient) {
@@ -375,7 +400,7 @@ func resultsClient(t *testing.T, tokenFile string, impersonationConfig *transpor
 	}
 
 	grpcOptions := []grpc.DialOption{
-		grpc.WithBlock(),
+		grpc.WithBlock(), //nolint:staticcheck
 		grpc.WithDefaultCallOptions(callOptions...),
 		grpc.WithTransportCredentials(transportCredentials),
 	}

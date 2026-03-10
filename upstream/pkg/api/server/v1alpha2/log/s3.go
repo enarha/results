@@ -8,7 +8,6 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	server "github.com/tektoncd/results/pkg/api/server/config"
-	"github.com/tektoncd/results/pkg/apis/v1alpha2"
+	"github.com/tektoncd/results/pkg/apis/v1alpha3"
 )
 
 const (
@@ -49,7 +48,7 @@ type s3Stream struct {
 }
 
 // NewS3Stream returns a log streamer for the S3 log storage type.
-func NewS3Stream(ctx context.Context, log *v1alpha2.Log, config *server.Config) (Stream, error) {
+func NewS3Stream(ctx context.Context, log *v1alpha3.Log, config *server.Config) (Stream, error) {
 	if log.Status.Path == "" {
 		filePath, err := FilePath(log)
 		if err != nil {
@@ -107,17 +106,17 @@ func initConfig(ctx context.Context, cfg *server.Config) (*s3.Client, error) {
 	var awsConfig aws.Config
 	var err error
 	if len(cfg.S3_ENDPOINT) > 0 {
-		customResolver := aws.EndpointResolverWithOptionsFunc(func(_, region string, _ ...any) (aws.Endpoint, error) {
+		customResolver := aws.EndpointResolverWithOptionsFunc(func(_, region string, _ ...any) (aws.Endpoint, error) { //nolint:staticcheck
 			if region == cfg.S3_REGION {
-				return aws.Endpoint{
+				return aws.Endpoint{ //nolint:staticcheck
 					URL:               cfg.S3_ENDPOINT,
 					SigningRegion:     cfg.S3_REGION,
 					HostnameImmutable: cfg.S3_HOSTNAME_IMMUTABLE,
 				}, nil
 			}
-			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
+			return aws.Endpoint{}, &aws.EndpointNotFoundError{} //nolint:staticcheck
 		})
-		awsConfig, err = config.LoadDefaultConfig(ctx, config.WithRegion(cfg.S3_REGION), credentialsOpt, config.WithEndpointResolverWithOptions(customResolver))
+		awsConfig, err = config.LoadDefaultConfig(ctx, config.WithRegion(cfg.S3_REGION), credentialsOpt, config.WithEndpointResolverWithOptions(customResolver)) //nolint:staticcheck
 	} else {
 		awsConfig, err = config.LoadDefaultConfig(ctx, config.WithRegion(cfg.S3_REGION), credentialsOpt)
 	}
@@ -126,11 +125,13 @@ func initConfig(ctx context.Context, cfg *server.Config) (*s3.Client, error) {
 		return nil, err
 	}
 
-	return s3.NewFromConfig(awsConfig), nil
+	return s3.NewFromConfig(awsConfig, func(o *s3.Options) {
+		o.UsePathStyle = true
+	}), nil
 }
 
 func (*s3Stream) Type() string {
-	return string(v1alpha2.S3LogType)
+	return string(v1alpha3.S3LogType)
 }
 
 func (s3s *s3Stream) WriteTo(w io.Writer) (n int64, err error) {
@@ -139,15 +140,19 @@ func (s3s *s3Stream) WriteTo(w io.Writer) (n int64, err error) {
 		Key:    &s3s.key,
 	})
 	if err != nil {
-		return 0, fmt.Errorf(err.Error())
+		return 0, err
 	}
 
-	defer outPut.Body.Close()
+	defer func() {
+		if cerr := outPut.Body.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	reader := bufio.NewReaderSize(outPut.Body, s3s.size)
 	n, err = reader.WriteTo(w)
 	if err != nil {
-		return 0, fmt.Errorf(err.Error())
+		return 0, err
 	}
 	return
 }
@@ -160,7 +165,7 @@ func (s3s *s3Stream) ReadFrom(r io.Reader) (int64, error) {
 
 	size := s3s.partSize + n
 	if size >= s3s.multiPartSize {
-		err = s3s.uploadMultiPart(&s3s.buffer, s3s.partNumber, n)
+		err = s3s.uploadMultiPart(&s3s.buffer, s3s.partNumber, size)
 		if err != nil {
 			return 0, err
 		}
@@ -174,19 +179,23 @@ func (s3s *s3Stream) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (s3s *s3Stream) uploadMultiPart(reader io.Reader, partNumber int32, partSize int64) error {
+	if partSize == 0 {
+		return nil
+	}
+
 	part, err := s3s.client.UploadPart(s3s.ctx, &s3.UploadPartInput{
 		UploadId:      &s3s.uploadID,
 		Bucket:        &s3s.bucket,
 		Key:           &s3s.key,
-		PartNumber:    partNumber,
+		PartNumber:    &partNumber,
 		Body:          reader,
-		ContentLength: partSize,
+		ContentLength: &partSize,
 	}, s3.WithAPIOptions(
 		v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware,
 	))
 
 	if err != nil {
-		s3s.client.AbortMultipartUpload(s3s.ctx, &s3.AbortMultipartUploadInput{ //nolint:errcheck
+		s3s.client.AbortMultipartUpload(s3s.ctx, &s3.AbortMultipartUploadInput{ //nolint:errcheck,gosec
 			Bucket:   &s3s.bucket,
 			Key:      &s3s.key,
 			UploadId: &s3s.uploadID,
@@ -194,7 +203,7 @@ func (s3s *s3Stream) uploadMultiPart(reader io.Reader, partNumber int32, partSiz
 		return err
 	}
 
-	s3s.parts = append(s3s.parts, types.CompletedPart{PartNumber: partNumber, ETag: part.ETag})
+	s3s.parts = append(s3s.parts, types.CompletedPart{PartNumber: &partNumber, ETag: part.ETag})
 	s3s.partNumber++
 
 	return err

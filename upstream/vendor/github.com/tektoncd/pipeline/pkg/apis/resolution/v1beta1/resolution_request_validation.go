@@ -20,8 +20,20 @@ import (
 	"context"
 
 	"github.com/tektoncd/pipeline/pkg/resolution/common"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"knative.dev/pkg/apis"
+	"knative.dev/pkg/webhook/resourcesemantics"
 )
+
+var (
+	_ apis.Validatable              = (*ResolutionRequest)(nil)
+	_ resourcesemantics.VerbLimited = (*ResolutionRequest)(nil)
+)
+
+// SupportedVerbs returns the operations that validation should be called for
+func (rr *ResolutionRequest) SupportedVerbs() []admissionregistrationv1.OperationType {
+	return []admissionregistrationv1.OperationType{admissionregistrationv1.Create, admissionregistrationv1.Update}
+}
 
 // Validate checks that a submitted ResolutionRequest is structurally
 // sound before the controller receives it.
@@ -30,7 +42,7 @@ func (rr *ResolutionRequest) Validate(ctx context.Context) (errs *apis.FieldErro
 	return errs.Also(rr.Spec.Validate(ctx).ViaField("spec"))
 }
 
-// Validate checks the the spec field of a ResolutionRequest is valid.
+// Validate checks the spec field of a ResolutionRequest is valid.
 func (rs *ResolutionRequestSpec) Validate(ctx context.Context) (errs *apis.FieldError) {
 	return nil
 }

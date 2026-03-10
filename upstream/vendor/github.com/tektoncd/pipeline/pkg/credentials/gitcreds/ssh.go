@@ -18,14 +18,13 @@ package gitcreds
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/tektoncd/pipeline/pkg/credentials"
-	corev1 "k8s.io/api/core/v1"
+	"github.com/tektoncd/pipeline/pkg/credentials/common"
+	credmatcher "github.com/tektoncd/pipeline/pkg/credentials/matcher"
 )
 
 const sshKnownHosts = "known_hosts"
@@ -115,13 +114,13 @@ func (dc *sshGitConfig) Write(directory string) error {
 	}
 	configPath := filepath.Join(sshDir, "config")
 	configContent := strings.Join(configEntries, "")
-	if err := ioutil.WriteFile(configPath, []byte(configContent), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		return err
 	}
 	if len(knownHosts) > 0 {
 		knownHostsPath := filepath.Join(sshDir, "known_hosts")
 		knownHostsContent := strings.Join(knownHosts, "\n")
-		return ioutil.WriteFile(knownHostsPath, []byte(knownHostsContent), 0600)
+		return os.WriteFile(knownHostsPath, []byte(knownHostsContent), 0600)
 	}
 	return nil
 }
@@ -137,20 +136,20 @@ func (be *sshEntry) path(sshDir string) string {
 }
 
 func (be *sshEntry) Write(sshDir string) error {
-	return ioutil.WriteFile(be.path(sshDir), []byte(be.privateKey), 0600)
+	return os.WriteFile(be.path(sshDir), []byte(be.privateKey), 0600)
 }
 
 func newSSHEntry(url, secretName string) (*sshEntry, error) {
-	secretPath := credentials.VolumeName(secretName)
+	secretPath := credmatcher.VolumeName(secretName)
 
-	pk, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.SSHAuthPrivateKey))
+	pk, err := os.ReadFile(filepath.Join(secretPath, common.SSHAuthPrivateKey))
 	if err != nil {
 		return nil, err
 	}
 	privateKey := string(pk)
 
 	knownHosts := ""
-	if kh, err := ioutil.ReadFile(filepath.Join(secretPath, sshKnownHosts)); err == nil {
+	if kh, err := os.ReadFile(filepath.Join(secretPath, sshKnownHosts)); err == nil {
 		knownHosts = string(kh)
 	}
 

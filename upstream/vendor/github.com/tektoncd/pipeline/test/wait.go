@@ -60,15 +60,17 @@ import (
 )
 
 const (
-	interval = 1 * time.Second
-	timeout  = 10 * time.Minute
+	interval       = 1 * time.Second
+	timeout        = 15 * time.Minute
+	v1Version      = "v1"
+	v1beta1Version = "v1beta1"
 )
 
 // ConditionAccessorFn is a condition function used polling functions
 type ConditionAccessorFn func(ca apis.ConditionAccessor) (bool, error)
 
 func pollImmediateWithContext(ctx context.Context, fn func() (bool, error)) error {
-	return wait.PollImmediate(interval, timeout, func() (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(context.Context) (bool, error) {
 		select {
 		case <-ctx.Done():
 			return true, ctx.Err()
@@ -82,37 +84,27 @@ func pollImmediateWithContext(ctx context.Context, fn func() (bool, error)) erro
 // interval until inState returns `true` indicating it is done, returns an
 // error or timeout. desc will be used to name the metric that is emitted to
 // track how long it took for name to get into the state checked by inState.
-func WaitForTaskRunState(ctx context.Context, c *clients, name string, inState ConditionAccessorFn, desc string) error {
+// version will be used to determine the client to be applied for the wait.
+func WaitForTaskRunState(ctx context.Context, c *clients, name string, inState ConditionAccessorFn, desc, version string) error {
 	metricName := fmt.Sprintf("WaitForTaskRunState/%s/%s", name, desc)
-	_, span := trace.StartSpan(context.Background(), metricName)
+	_, span := trace.StartSpan(ctx, metricName)
 	defer span.End()
 
 	return pollImmediateWithContext(ctx, func() (bool, error) {
-		r, err := c.V1beta1TaskRunClient.Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return true, err
+		switch version {
+		case v1Version:
+			r, err := c.V1TaskRunClient.Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return true, err
+			}
+			return inState(&r.Status)
+		default:
+			r, err := c.V1beta1TaskRunClient.Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return true, err
+			}
+			return inState(&r.Status)
 		}
-		return inState(&r.Status)
-	})
-}
-
-// WaitForRunState polls the status of the Run called name from client every
-// interval until inState returns `true` indicating it is done, returns an
-// error or timeout. desc will be used to name the metric that is emitted to
-// track how long it took for name to get into the state checked by inState.
-func WaitForRunState(ctx context.Context, c *clients, name string, polltimeout time.Duration, inState ConditionAccessorFn, desc string) error {
-	metricName := fmt.Sprintf("WaitForRunState/%s/%s", name, desc)
-	_, span := trace.StartSpan(context.Background(), metricName)
-	defer span.End()
-
-	ctx, cancel := context.WithTimeout(ctx, polltimeout)
-	defer cancel()
-	return pollImmediateWithContext(ctx, func() (bool, error) {
-		r, err := c.V1alpha1RunClient.Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return true, err
-		}
-		return inState(&r.Status)
 	})
 }
 
@@ -122,7 +114,7 @@ func WaitForRunState(ctx context.Context, c *clients, name string, polltimeout t
 // track how long it took for name to get into the state checked by inState.
 func WaitForDeploymentState(ctx context.Context, c *clients, name string, namespace string, inState func(d *appsv1.Deployment) (bool, error), desc string) error {
 	metricName := fmt.Sprintf("WaitForDeploymentState/%s/%s", name, desc)
-	_, span := trace.StartSpan(context.Background(), metricName)
+	_, span := trace.StartSpan(ctx, metricName)
 	defer span.End()
 
 	return pollImmediateWithContext(ctx, func() (bool, error) {
@@ -140,7 +132,7 @@ func WaitForDeploymentState(ctx context.Context, c *clients, name string, namesp
 // track how long it took for name to get into the state checked by inState.
 func WaitForPodState(ctx context.Context, c *clients, name string, namespace string, inState func(r *corev1.Pod) (bool, error), desc string) error {
 	metricName := fmt.Sprintf("WaitForPodState/%s/%s", name, desc)
-	_, span := trace.StartSpan(context.Background(), metricName)
+	_, span := trace.StartSpan(ctx, metricName)
 	defer span.End()
 
 	return pollImmediateWithContext(ctx, func() (bool, error) {
@@ -152,23 +144,59 @@ func WaitForPodState(ctx context.Context, c *clients, name string, namespace str
 	})
 }
 
-// WaitForPipelineRunState polls the status of the PipelineRun called name from client every
-// interval until inState returns `true` indicating it is done, returns an
+// WaitForPVCIsDeleted polls the number of the PVC in the namespace from client every
+// interval until all the PVCs in the namespace are deleted. It returns an
 // error or timeout. desc will be used to name the metric that is emitted to
-// track how long it took for name to get into the state checked by inState.
-func WaitForPipelineRunState(ctx context.Context, c *clients, name string, polltimeout time.Duration, inState ConditionAccessorFn, desc string) error {
-	metricName := fmt.Sprintf("WaitForPipelineRunState/%s/%s", name, desc)
-	_, span := trace.StartSpan(context.Background(), metricName)
+// track how long it took to delete all the PVCs in the namespace.
+func WaitForPVCIsDeleted(ctx context.Context, c *clients, polltimeout time.Duration, name, namespace, desc string) error {
+	metricName := fmt.Sprintf("WaitForPVCIsDeleted/%s/%s", name, desc)
+	_, span := trace.StartSpan(ctx, metricName)
 	defer span.End()
 
 	ctx, cancel := context.WithTimeout(ctx, polltimeout)
 	defer cancel()
+
 	return pollImmediateWithContext(ctx, func() (bool, error) {
-		r, err := c.V1beta1PipelineRunClient.Get(ctx, name, metav1.GetOptions{})
+		pvcList, err := c.KubeClient.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return true, err
 		}
-		return inState(&r.Status)
+		if len(pvcList.Items) > 0 {
+			return false, nil
+		}
+
+		return true, nil
+	})
+}
+
+// WaitForPipelineRunState polls the status of the PipelineRun called name from client every
+// interval until inState returns `true` indicating it is done, returns an
+// error or timeout. desc will be used to name the metric that is emitted to
+// track how long it took for name to get into the state checked by inState.
+// version will be used to determine the client to be applied for the wait.
+func WaitForPipelineRunState(ctx context.Context, c *clients, name string, polltimeout time.Duration, inState ConditionAccessorFn, desc, version string) error {
+	metricName := fmt.Sprintf("WaitForPipelineRunState/%s/%s", name, desc)
+	_, span := trace.StartSpan(ctx, metricName)
+	defer span.End()
+
+	ctx, cancel := context.WithTimeout(ctx, polltimeout)
+	defer cancel()
+
+	return pollImmediateWithContext(ctx, func() (bool, error) {
+		switch version {
+		case "v1":
+			r, err := c.V1PipelineRunClient.Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return true, err
+			}
+			return inState(&r.Status)
+		default:
+			r, err := c.V1beta1PipelineRunClient.Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return true, err
+			}
+			return inState(&r.Status)
+		}
 	})
 }
 
@@ -178,7 +206,7 @@ func WaitForPipelineRunState(ctx context.Context, c *clients, name string, pollt
 // track how long it took for name to get into the state checked by inState.
 func WaitForServiceExternalIPState(ctx context.Context, c *clients, namespace, name string, inState func(s *corev1.Service) (bool, error), desc string) error {
 	metricName := fmt.Sprintf("WaitForServiceExternalIPState/%s/%s", name, desc)
-	_, span := trace.StartSpan(context.Background(), metricName)
+	_, span := trace.StartSpan(ctx, metricName)
 	defer span.End()
 
 	return pollImmediateWithContext(ctx, func() (bool, error) {

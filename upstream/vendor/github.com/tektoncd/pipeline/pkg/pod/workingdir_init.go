@@ -31,7 +31,11 @@ import (
 //
 // If no such directories need to be created (i.e., no relative workingDirs
 // are specified), this method returns nil, as no init container is necessary.
-func workingDirInit(workingdirinitImage string, stepContainers []corev1.Container) *corev1.Container {
+// If setSecurityContext is true, the init container will include a security context
+// allowing it to run in namespaces with restriced pod security admission.
+// If the init container will run on windows, `windows` should be set to `true`,
+// so that the correct security context can be applied.
+func workingDirInit(workingdirinitImage string, stepContainers []corev1.Container, securityContext SecurityContextConfig, windows bool) *corev1.Container {
 	// Gather all unique workingDirs.
 	workingDirs := sets.NewString()
 	for _, step := range stepContainers {
@@ -57,7 +61,7 @@ func workingDirInit(workingdirinitImage string, stepContainers []corev1.Containe
 		return nil
 	}
 
-	return &corev1.Container{
+	c := &corev1.Container{
 		Name:         "working-dir-initializer",
 		Image:        workingdirinitImage,
 		Command:      []string{"/ko-app/workingdirinit"},
@@ -65,4 +69,9 @@ func workingDirInit(workingdirinitImage string, stepContainers []corev1.Containe
 		WorkingDir:   pipeline.WorkspaceDir,
 		VolumeMounts: implicitVolumeMounts,
 	}
+	if securityContext.SetSecurityContext {
+		c.SecurityContext = securityContext.GetSecurityContext(windows)
+	}
+
+	return c
 }

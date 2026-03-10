@@ -28,7 +28,7 @@ import (
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/log"
 
 	"github.com/jonboulle/clockwork"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	pipelineclient "github.com/tektoncd/pipeline/pkg/client/injection/client"
 	rtesting "github.com/tektoncd/pipeline/pkg/reconciler/testing"
 	"github.com/tektoncd/results/pkg/api/server/config"
@@ -37,12 +37,14 @@ import (
 	"github.com/tektoncd/results/pkg/internal/test"
 	"github.com/tektoncd/results/pkg/watcher/reconciler"
 	"github.com/tektoncd/results/pkg/watcher/reconciler/annotation"
+	"github.com/tektoncd/results/pkg/watcher/reconciler/client"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sTest "k8s.io/client-go/kubernetes/fake"
 	"knative.dev/pkg/apis"
-	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 	"knative.dev/pkg/controller"
 
 	// Needed for informer injection.
@@ -50,9 +52,9 @@ import (
 )
 
 var (
-	taskrun = &v1beta1.TaskRun{
+	taskrun = &pipelinev1.TaskRun{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "tekton.dev/v1beta1",
+			APIVersion: "tekton.dev/v1",
 			Kind:       "TaskRun",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -61,30 +63,30 @@ var (
 			Annotations: map[string]string{"demo": "demo"},
 			UID:         "12345",
 		},
-		Status: v1beta1.TaskRunStatus{
-			Status: duckv1beta1.Status{
-				Conditions: duckv1beta1.Conditions{
+		Status: pipelinev1.TaskRunStatus{
+			Status: duckv1.Status{
+				Conditions: duckv1.Conditions{
 					apis.Condition{
 						Type:   apis.ConditionSucceeded,
 						Status: corev1.ConditionTrue,
-						Reason: v1beta1.TaskRunReasonSuccessful.String(),
+						Reason: pipelinev1.TaskRunReasonSuccessful.String(),
 					},
 				},
 			},
-			TaskRunStatusFields: v1beta1.TaskRunStatusFields{},
+			TaskRunStatusFields: pipelinev1.TaskRunStatusFields{},
 		},
-		Spec: v1beta1.TaskRunSpec{
-			TaskSpec: &v1beta1.TaskSpec{
-				Steps: []v1beta1.Step{{
+		Spec: pipelinev1.TaskRunSpec{
+			TaskSpec: &pipelinev1.TaskSpec{
+				Steps: []pipelinev1.Step{{
 					Script: "echo hello world!",
 				}},
 			},
 		},
 	}
 
-	pipelinerun = &v1beta1.PipelineRun{
+	pipelinerun = &pipelinev1.PipelineRun{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "tekton.dev/v1beta1",
+			APIVersion: "tekton.dev/v1",
 			Kind:       "PipelineRun",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -93,25 +95,25 @@ var (
 			Annotations: map[string]string{"demo": "demo"},
 			UID:         "12345",
 		},
-		Status: v1beta1.PipelineRunStatus{
-			Status: duckv1beta1.Status{
-				Conditions: duckv1beta1.Conditions{
+		Status: pipelinev1.PipelineRunStatus{
+			Status: duckv1.Status{
+				Conditions: duckv1.Conditions{
 					apis.Condition{
 						Type:   apis.ConditionSucceeded,
 						Status: corev1.ConditionTrue,
-						Reason: v1beta1.PipelineRunReasonSuccessful.String(),
+						Reason: pipelinev1.PipelineRunReasonSuccessful.String(),
 					},
 				},
 			},
-			PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{},
+			PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{},
 		},
-		Spec: v1beta1.PipelineRunSpec{
-			PipelineSpec: &v1beta1.PipelineSpec{
-				Tasks: []v1beta1.PipelineTask{{
+		Spec: pipelinev1.PipelineRunSpec{
+			PipelineSpec: &pipelinev1.PipelineSpec{
+				Tasks: []pipelinev1.PipelineTask{{
 					Name: "task",
-					TaskSpec: &v1beta1.EmbeddedTask{
-						TaskSpec: v1beta1.TaskSpec{
-							Steps: []v1beta1.Step{{
+					TaskSpec: &pipelinev1.EmbeddedTask{
+						TaskSpec: pipelinev1.TaskSpec{
+							Steps: []pipelinev1.Step{{
 								Script: "echo hello world!",
 							}},
 						},
@@ -130,7 +132,7 @@ func TestReconcile_TaskRun(t *testing.T) {
 	fakeclock := clockwork.NewFakeClockAt(time.Now())
 	clock = fakeclock
 
-	trclient := &TaskRunClient{TaskRunInterface: pipelineclient.Get(ctx).TektonV1beta1().TaskRuns(taskrun.GetNamespace())}
+	trclient := &client.TaskRunClient{TaskRunInterface: pipelineclient.Get(ctx).TektonV1().TaskRuns(taskrun.GetNamespace())}
 	if _, err := trclient.Create(ctx, taskrun, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -138,9 +140,12 @@ func TestReconcile_TaskRun(t *testing.T) {
 	cfg := &reconciler.Config{
 		DisableAnnotationUpdate: true,
 		RequeueInterval:         1 * time.Second,
+		StoreEvent:              true,
 	}
 
-	r := NewDynamicReconciler(resultsClient, logsClient, trclient, cfg)
+	client := k8sTest.NewSimpleClientset()
+
+	r := NewDynamicReconciler(client, resultsClient, logsClient, trclient, cfg)
 	if err := r.Reconcile(ctx, taskrun); err != nil {
 		t.Fatal(err)
 	}
@@ -164,9 +169,13 @@ func TestReconcile_TaskRun(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Error parsing result uid: %v", err)
 		}
-		logRecordName := record.FormatName(resultName, uuid.NewMD5(uid, []byte(taskrun.GetUID())).String())
+		logRecordName := record.FormatName(resultName, uuid.NewMD5(uid, []byte(taskrun.GetUID()+"eventlist")).String())
 		if _, err := resultsClient.GetRecord(ctx, &pb.GetRecordRequest{Name: logRecordName}); err != nil {
 			t.Fatalf("Error getting log record: %v", err)
+		}
+		eventListName := watcherresults.FormatEventListName(resultName, uid, taskrun)
+		if _, err := resultsClient.GetRecord(ctx, &pb.GetRecordRequest{Name: eventListName}); err != nil {
+			t.Fatalf("Error getting eventlist %s: record: %v", eventListName, err)
 		}
 	})
 
@@ -204,6 +213,14 @@ func TestReconcile_TaskRun(t *testing.T) {
 		if _, err := resultsClient.GetRecord(ctx, &pb.GetRecordRequest{Name: logRecordName}); err != nil {
 			t.Fatalf("Error getting log record '%s': %v", logRecordName, err)
 		}
+		eventListName := tr.GetAnnotations()[annotation.EventList]
+		if eventListName == "" {
+			t.Fatalf("Error parsing eventlist name '%s'", eventListName)
+		}
+		if _, err := resultsClient.GetRecord(ctx, &pb.GetRecordRequest{Name: eventListName}); err != nil {
+			t.Fatalf("Error getting eventlist record '%s': %v", eventListName, err)
+		}
+
 	})
 
 	t.Run("delete object once grace period elapses", func(t *testing.T) {
@@ -241,7 +258,7 @@ func TestReconcile_TaskRun(t *testing.T) {
 		// Simulate a failed run, set the completion time and advance
 		// the clock to make this test case more independent of the
 		// previous one.
-		taskrun.Status.MarkResourceFailed(v1beta1.TaskRunReasonFailed, errors.New("Failed"))
+		taskrun.Status.MarkResourceFailed(pipelinev1.TaskRunReasonFailed, errors.New("Failed"))
 		taskrun.Status.CompletionTime = &metav1.Time{Time: fakeclock.Now()}
 		fakeclock.Advance(2 * time.Second)
 
@@ -424,12 +441,17 @@ func TestReconcile_PipelineRun(t *testing.T) {
 	fakeclock := clockwork.NewFakeClockAt(time.Now())
 	clock = fakeclock
 
-	prclient := &PipelineRunClient{PipelineRunInterface: pipelineclient.Get(ctx).TektonV1beta1().PipelineRuns(pipelinerun.GetNamespace())}
+	prclient := &client.PipelineRunClient{PipelineRunInterface: pipelineclient.Get(ctx).TektonV1().PipelineRuns(pipelinerun.GetNamespace())}
 	if _, err := prclient.Create(ctx, pipelinerun, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	cfg := &reconciler.Config{
+		StoreEvent: true,
+	}
 
-	r := NewDynamicReconciler(resultsClient, logsClient, prclient, nil)
+	client := k8sTest.NewSimpleClientset()
+
+	r := NewDynamicReconciler(client, resultsClient, logsClient, prclient, cfg)
 	if err := r.Reconcile(ctx, pipelinerun); err != nil {
 		t.Fatal(err)
 	}
@@ -472,6 +494,16 @@ func TestReconcile_PipelineRun(t *testing.T) {
 		_, err = resultsClient.GetRecord(ctx, &pb.GetRecordRequest{Name: logRecordName})
 		if err != nil {
 			t.Fatalf("Error getting log record: %v", err)
+		}
+	})
+	t.Run("EventList", func(t *testing.T) {
+
+		eventListName := pr.GetAnnotations()[annotation.EventList]
+		if eventListName == "" {
+			t.Fatalf("Error parsing eventlist name '%s'", eventListName)
+		}
+		if _, err := resultsClient.GetRecord(ctx, &pb.GetRecordRequest{Name: eventListName}); err != nil {
+			t.Fatalf("Error getting eventlist record '%s': %v", eventListName, err)
 		}
 	})
 

@@ -17,7 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
@@ -29,6 +29,7 @@ import (
 //
 // +genclient
 // +genreconciler
+// +kubebuilder:storageversion
 type ResolutionRequest struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
@@ -50,7 +51,7 @@ type ResolutionRequest struct {
 type ResolutionRequestList struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ResolutionRequest `json:"items"`
 }
 
@@ -63,7 +64,14 @@ type ResolutionRequestSpec struct {
 	// path to file, the kind of authentication to leverage, etc.
 	// +optional
 	// +listType=atomic
-	Params []pipelinev1beta1.Param `json:"params,omitempty"`
+	Params []pipelinev1.Param `json:"params,omitempty"`
+	// URL is the runtime url passed to the resolver
+	// to help it figure out how to resolver the resource being
+	// requested.
+	// This is currently at an ALPHA stability level and subject to
+	// alpha API compatibility policies.
+	// +optional
+	URL string `json:"url,omitempty"`
 }
 
 // ResolutionRequestStatus are all the fields in a ResolutionRequest's
@@ -80,9 +88,16 @@ type ResolutionRequestStatusFields struct {
 	// of the requested resource in-lined into the ResolutionRequest
 	// object.
 	Data string `json:"data"`
-	// Source is the source reference of the remote data that records the url, digest
+	// Deprecated: Use RefSource instead
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Source *pipelinev1.RefSource `json:"source"`
+
+	// RefSource is the source reference of the remote data that records the url, digest
 	// and the entrypoint.
-	Source *pipelinev1beta1.ConfigSource `json:"source"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	RefSource *pipelinev1.RefSource `json:"refSource"`
 }
 
 // GetStatus implements KRShaped.

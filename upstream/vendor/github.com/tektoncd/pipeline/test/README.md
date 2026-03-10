@@ -30,6 +30,8 @@ in local kubeconfig file (~/.kube/config by default) in you local machine.
 is the difference of running environments. The envs that our presubmit test
 uses are stored in ./*.env files. Specifically,
 > - e2e-tests-kind-prow-alpha.env for [`pull-tekton-pipeline-alpha-integration-tests`](https://github.com/tektoncd/plumbing/blob/d2c8ccb63d02c6e72c62def788af32d63ff1981a/prow/config.yaml#L1304)
+> - e2e-tests-kind-prow-beta.env for [`pull-tekton-pipeline-beta-integration-tests`]
+(TODO: https://github.com/tektoncd/pipeline/issues/6048 Add permanent link after plumbing setup for prow)
 > - e2e-tests-kind-prow.env for [`pull-tekton-pipeline-integration-tests`](https://github.com/tektoncd/plumbing/blob/d2c8ccb63d02c6e72c62def788af32d63ff1981a/prow/config.yaml#L1249)
 
 ## Unit tests
@@ -316,7 +318,7 @@ The `Clients` struct contains initialized clients for accessing:
 For example, to create a `Pipeline`:
 
 ```bash
-_, err = clients.PipelineClient.Pipelines.Create(test.Route(namespaceName, pipelineName))
+_, err = clients.v1PipelineClient.Pipelines.Create(test.Route(namespaceName, pipelineName))
 ```
 
 And you can use the client to clean up resources created by your test (e.g. in
@@ -366,7 +368,7 @@ err = WaitForTaskRunState(c, hwTaskRunName, func(tr *v1alpha1.TaskRun) (bool, er
         return true, nil
     }
     return false, nil
-}, "TaskRunHasCondition")
+}, "TaskRunHasCondition", v1Version)
 ```
 
 _[Metrics will be emitted](https://github.com/knative/pkg/tree/master/test#emit-metrics)
@@ -408,7 +410,7 @@ via the sections for `tektoncd/pipeline`.
 
 The presubmit integration tests entrypoint will run:
 
-- [The integration tests](#integration-tests)
+- [The integration tests](#end-to-end-tests)
 - A test of [our example CRDs](../examples/README.md#testing-the-examples)
 
 When run using Prow, integration tests will try to get a new cluster using
@@ -436,3 +438,120 @@ setup a cluster for you:
 export PROJECT_ID=my_gcp_project
 test/presubmit-tests.sh --integration-tests
 ```
+
+## Per Feature flag tests
+
+Per-feature flag tests verify that the combinations of feature flags work together
+correctly, ensuring that individual flags don't interfere with each other's 
+functionality and that overall outcomes remain consistent.
+Per [TEP0138](https://github.com/tektoncd/community/blob/main/teps/0138-decouple-api-and-feature-versioning.md#additional-ci-tests),
+minimum end-to-end tests for stable features are utilized, mocking stable, beta,
+and alpha stability levels within different test environments.
+
+To run these tests, you must provide `go` with `-tags=featureflags`. By default, the tests
+run against your current kubeconfig context, but you can change that and other settings with the flags like
+the end to end tests:
+
+```shell
+go test -v -count=1 -tags=featureflags -timeout=60m ./test -run ^TestPerFeatureFlag
+```
+
+Flags that could be set in featureflags tests are exactly the same as [flags in end to end tests](#flags).
+Just note that the build tags should be `-tags=featureflags`.
+
+## Test Categorization: Parallel vs Serial Execution
+
+The e2e test suite implements a categorization system that allows tests to run in parallel or serial mode,
+optimizing test execution time while ensuring safety for tests that modify shared cluster state.
+
+### Overview
+
+Tests are categorized using comment annotations in the source code:
+- **Parallel tests**: Safe to run concurrently, don't modify shared cluster state
+- **Serial tests**: Must run sequentially because they modify ConfigMaps in `system.Namespace()`
+
+The test runner (`TestMain` in `init_test.go`) parses these annotations and orchestrates test execution accordingly.
+
+### Annotation Format
+
+Tests use structured Go comments to declare their execution mode:
+
+```go
+// @test:execution=parallel
+func TestMyParallelTest(t *testing.T) {
+    // Test implementation
+}
+
+// @test:execution=serial
+// @test:reason=modifies results-from field in feature-flags ConfigMap
+// @test:tags=artifacts,featureflags,stateful
+func TestMySerialTest(t *testing.T) {
+    // Test implementation
+}
+```
+
+**Annotation fields:**
+- `@test:execution` - Required: either `parallel` or `serial`
+- `@test:reason` - Recommended for serial tests: explains why serial execution is needed
+- `@test:tags` - Optional: comma-separated tags for categorization and filtering
+
+### Running Tests by Category
+
+Use the `-category` flag to control which tests run:
+
+```shell
+# Run only parallel tests (fast, safe for concurrent execution)
+go test -tags=e2e -category=parallel -timeout=20m ./test
+
+# Run only serial tests (slower, sequential execution)
+go test -tags=e2e -category=serial -timeout=20m ./test
+
+# Run all tests with proper ordering (serial → parallel → unknown)
+go test -tags=e2e -category=all -timeout=30m ./test
+
+# Show test categorization without running tests
+go test -tags=e2e -show-tests ./test
+```
+
+### Execution Order
+
+When running with `-category=all`, tests execute in this order:
+1. **Serial tests** run first, sequentially, with fail-fast behavior
+2. **Parallel tests** run next, concurrently
+3. **Unknown tests** (unannotated) run last
+
+This ensures that tests modifying shared state complete before parallel execution begins.
+
+### When to Mark Tests as Serial
+
+A test MUST be marked `serial` if it:
+- Modifies ConfigMaps in `system.Namespace()` (typically `tekton-pipelines`)
+- Changes feature flags in the `feature-flags` ConfigMap
+- Modifies any other shared cluster-wide configuration
+
+Common examples:
+- Tests changing `enable-api-fields`, `results-from`, `coschedule` feature flags
+- Tests modifying `trusted-resources-verification-no-match-policy`
+- Any test calling `updateConfigMap(ctx, c.KubeClient, system.Namespace(), ...)`
+
+### When to Mark Tests as Parallel
+
+A test can be marked `parallel` if it:
+- Only creates/modifies resources in its own test namespace
+- Doesn't modify `system.Namespace()` ConfigMaps
+- Can safely run concurrently with other tests
+
+This includes most conformance tests, resolver tests, workspace tests, etc.
+
+### Implementation Details
+
+The categorization system is implemented via:
+
+1. **TestMain** (`init_test.go`): Parses annotations from source files using Go's AST parser,
+   categorizes tests, and routes execution based on the `-category` flag.
+
+2. **Annotation Parser**: Scans `*_test.go` files, extracts `@test:*` comments, and builds
+   a manifest of test metadata.
+
+3. **Test Filtering**: Uses `flag.Set("test.run", pattern)` to filter which tests execute
+   in each run.

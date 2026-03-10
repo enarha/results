@@ -21,7 +21,12 @@ type Config struct {
 	PROMETHEUS_PORT          string `mapstructure:"PROMETHEUS_PORT"`
 	PROMETHEUS_HISTOGRAM     bool   `mapstructure:"PROMETHEUS_HISTOGRAM"`
 	LOG_LEVEL                string `mapstructure:"LOG_LEVEL"`
+	SQL_LOG_LEVEL            string `mapstructure:"SQL_LOG_LEVEL"`
 	TLS_PATH                 string `mapstructure:"TLS_PATH"`
+	TLS_MIN_VERSION          string `mapstructure:"TLS_MIN_VERSION"`
+	TLS_CIPHER_SUITES        string `mapstructure:"TLS_CIPHER_SUITES"`
+	TLS_CURVE_PREFERENCES    string `mapstructure:"TLS_CURVE_PREFERENCES"`
+	FEATURE_GATES            string `mapstructure:"FEATURE_GATES"`
 
 	GRPC_WORKER_POOL int `mapstructure:"GRPC_WORKER_POOL"`
 	K8S_QPS          int `mapstructure:"K8S_QPS"`
@@ -34,6 +39,7 @@ type Config struct {
 	LOGS_TYPE        string `mapstructure:"LOGS_TYPE"`
 	LOGS_BUFFER_SIZE int    `mapstructure:"LOGS_BUFFER_SIZE"`
 	LOGS_PATH        string `mapstructure:"LOGS_PATH"`
+	LOGS_TIMESTAMPS  bool   `mapstructure:"LOGS_TIMESTAMPS"`
 
 	PROFILING      bool   `mapstructure:"PROFILING"`
 	PROFILING_PORT string `mapstructure:"PROFILING_PORT"`
@@ -48,6 +54,22 @@ type Config struct {
 	S3_ACCESS_KEY_ID      string `mapstructure:"S3_ACCESS_KEY_ID"`
 	S3_SECRET_ACCESS_KEY  string `mapstructure:"S3_SECRET_ACCESS_KEY"`
 	S3_MULTI_PART_SIZE    int64  `mapstructure:"S3_MULTI_PART_SIZE"`
+
+	CONVERTER_ENABLE   bool `mapstructure:"CONVERTER_ENABLE"`
+	CONVERTER_DB_LIMIT int  `mapstructure:"CONVERTER_DB_LIMIT"`
+
+	LOGGING_PLUGIN_API_URL                  string `mapstructure:"LOGGING_PLUGIN_API_URL"`
+	LOGGING_PLUGIN_NAMESPACE_KEY            string `mapstructure:"LOGGING_PLUGIN_NAMESPACE_KEY"`
+	LOGGING_PLUGIN_CONTAINER_KEY            string `mapstructure:"LOGGING_PLUGIN_CONTAINER_KEY"`
+	LOGGING_PLUGIN_STATIC_LABELS            string `mapstructure:"LOGGING_PLUGIN_STATIC_LABELS"`
+	LOGGING_PLUGIN_TOKEN_PATH               string `mapstructure:"LOGGING_PLUGIN_TOKEN_PATH"`
+	LOGGING_PLUGIN_PROXY_PATH               string `mapstructure:"LOGGING_PLUGIN_PROXY_PATH"`
+	LOGGING_PLUGIN_CA_CERT                  string `mapstructure:"LOGGING_PLUGIN_CA_CERT"`
+	LOGGING_PLUGIN_QUERY_LIMIT              uint   `mapstructure:"LOGGING_PLUGIN_QUERY_LIMIT"`
+	LOGGING_PLUGIN_TLS_VERIFICATION_DISABLE bool   `mapstructure:"LOGGING_PLUGIN_TLS_VERIFICATION_DISABLE"`
+	LOGGING_PLUGIN_FORWARDER_DELAY_DURATION int64  `mapstructure:"LOGGING_PLUGIN_FORWARDER_DELAY_DURATION"`
+	LOGGING_PLUGIN_QUERY_PARAMS             string `mapstructure:"LOGGING_PLUGIN_QUERY_PARAMS"`
+	LOGGING_PLUGIN_MULTIPART_REGEX          string `mapstructure:"LOGGING_PLUGIN_MULTIPART_REGEX"`
 }
 
 func Get() *Config {
@@ -69,5 +91,6 @@ func Get() *Config {
 	if err := viper.Unmarshal(&config); err != nil {
 		log.Fatal("Cannot load config:", err)
 	}
+
 	return &config
 }

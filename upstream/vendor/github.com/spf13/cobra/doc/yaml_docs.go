@@ -1,4 +1,4 @@
-// Copyright 2013-2022 The Cobra Authors
+// Copyright 2013-2023 The Cobra Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -153,7 +153,7 @@ func genFlagResult(flags *pflag.FlagSet) []cmdOption {
 		// Todo, when we mark a shorthand is deprecated, but specify an empty message.
 		// The flag.ShorthandDeprecated is empty as the shorthand is deprecated.
 		// Using len(flag.ShorthandDeprecated) > 0 can't handle this, others are ok.
-		if !(len(flag.ShorthandDeprecated) > 0) && len(flag.Shorthand) > 0 {
+		if len(flag.ShorthandDeprecated) == 0 && len(flag.Shorthand) > 0 {
 			opt := cmdOption{
 				flag.Name,
 				flag.Shorthand,

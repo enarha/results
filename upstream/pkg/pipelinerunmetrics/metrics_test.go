@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"github.com/jonboulle/clockwork"
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tektoncd/results/pkg/apis/config"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
-	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
+	duckv1beta1 "knative.dev/pkg/apis/duck/v1"
 	logtesting "knative.dev/pkg/logging/testing"
 	_ "knative.dev/pkg/metrics/testing" // Required to set up metrics env for testing
 
@@ -21,9 +21,9 @@ import (
 
 var (
 	nowTime        = metav1.Now()
-	completionTime = metav1.NewTime(nowTime.Time.Add(-time.Minute))
-	failedTime     = metav1.NewTime(nowTime.Time.Add(-time.Second * 30))
-	startTime      = metav1.NewTime(nowTime.Time.Add(-time.Minute * 2))
+	completionTime = metav1.NewTime(nowTime.Add(-time.Minute))
+	failedTime     = metav1.NewTime(nowTime.Add(-time.Second * 30))
+	startTime      = metav1.NewTime(nowTime.Add(-time.Minute * 2))
 )
 
 func TestRecorder_DurationAndCountDeleted(t *testing.T) {
@@ -151,8 +151,8 @@ func TestRecorder_DurationAndCountDeleted(t *testing.T) {
 			}
 
 			logger := logtesting.TestLogger(t)
-			viewUnregister(logger)
-			_ = viewRegister(logger, cfg)
+			unregisterView(logger)
+			_ = registerView(logger, cfg)
 
 			if err := r.DurationAndCountDeleted(context.Background(), cfg, tt.pr); (err != nil) != tt.wantErr {
 				t.Errorf("DurationAndCountDeleted() error = %v, wantErr %v", err, tt.wantErr)

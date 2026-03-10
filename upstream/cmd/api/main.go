@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package main provides the entry point for the Results API server.
 package main
 
 import (
@@ -22,16 +23,23 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/tektoncd/results/pkg/api/server/features"
+
+	"github.com/tektoncd/results/internal/fieldmask"
+
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/auth/impersonation"
+	"github.com/tektoncd/results/pkg/converter"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -40,6 +48,9 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	_ "net/http/pprof"
+
+	serverdb "github.com/tektoncd/results/pkg/api/server/db"
+	_ "github.com/tektoncd/results/pkg/api/server/db/errors/postgres"
 
 	"github.com/golang-jwt/jwt/v4"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -53,9 +64,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tektoncd/results/pkg/api/server/config"
 	"github.com/tektoncd/results/pkg/api/server/logger"
+	"github.com/tektoncd/results/pkg/api/server/tlsconfig"
 	v1alpha2 "github.com/tektoncd/results/pkg/api/server/v1alpha2"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/auth"
 	v1alpha2pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
+	v1alpha3pb "github.com/tektoncd/results/proto/v1alpha3/results_go_proto"
 	_ "go.uber.org/automaxprocs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -64,7 +77,6 @@ import (
 	"google.golang.org/grpc/reflection"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -76,14 +88,57 @@ func main() {
 	// any data in the event of an unhandled error.
 	defer log.Sync() //nolint:errcheck
 
-	// Load server TLS
+	// Load server features
+	f := features.NewFeatureGate()
+	if err := f.Set(serverConfig.FEATURE_GATES); err != nil {
+		log.Errorf("Failed to load feature gates: %v", err)
+	}
+
+	// Load server TLS configuration
 	certFile := path.Join(serverConfig.TLS_PATH, "tls.crt")
 	keyFile := path.Join(serverConfig.TLS_PATH, "tls.key")
-	creds, tlsError := credentials.NewServerTLSFromFile(certFile, keyFile)
-	if tlsError != nil {
-		log.Errorf("Error loading server TLS: %v", tlsError)
+
+	var creds credentials.TransportCredentials
+	var tlsError error
+	var serverTLSConfig *tls.Config
+
+	// Load TLS configuration
+	// If any TLS env var is directly set (operator injection), use ONLY env vars for complete override
+	// This avoids mixing ConfigMap and operator settings which could result in incompatible combinations
+	var tlsConf *tlsconfig.Config
+	if tlsconfig.HasEnvOverrides() {
+		tlsConf = tlsconfig.LoadFromEnv(os.Getenv)
+		log.Debug("TLS configuration loaded from environment variables")
+	} else {
+		tlsConf = tlsconfig.New(serverConfig.TLS_MIN_VERSION, serverConfig.TLS_CIPHER_SUITES, serverConfig.TLS_CURVE_PREFERENCES)
+		log.Debug("TLS configuration loaded from config file")
+	}
+	serverTLSConfig, tlsConfErr := tlsConf.ToTLSConfig()
+	if tlsConfErr != nil {
+		log.Errorf("Error parsing TLS configuration: %v", tlsConfErr)
+		log.Warn("Using default TLS configuration")
+		// Use Go's defaults - only set NextProtos for HTTP/2 support
+		serverTLSConfig = &tls.Config{
+			NextProtos: []string{"h2", "http/1.1"},
+		}
+	} else {
+		log.Infof("TLS Configuration: MinVersion=%s, CipherSuites=[%s], CurvePreferences=[%s]",
+			tlsconfig.GetTLSVersionName(serverTLSConfig.MinVersion),
+			tlsconfig.FormatCipherSuites(serverTLSConfig.CipherSuites),
+			tlsconfig.FormatCurvePreferences(serverTLSConfig.CurvePreferences))
+	}
+
+	// Load certificate and key
+	cert, certErr := tls.LoadX509KeyPair(certFile, keyFile)
+	if certErr != nil {
+		log.Errorf("Error loading TLS certificate: %v", certErr)
 		log.Warn("TLS will be disabled")
 		creds = insecure.NewCredentials()
+		tlsError = certErr
+	} else {
+		// Apply certificate to TLS config
+		serverTLSConfig.Certificates = []tls.Certificate{cert}
+		creds = credentials.NewTLS(serverTLSConfig)
 	}
 
 	if serverConfig.DB_USER == "" || serverConfig.DB_PASSWORD == "" {
@@ -103,17 +158,38 @@ func main() {
 	var err error
 
 	dbURI := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s sslrootcert=%s", serverConfig.DB_HOST, serverConfig.DB_USER, serverConfig.DB_PASSWORD, serverConfig.DB_NAME, serverConfig.DB_PORT, serverConfig.DB_SSLMODE, serverConfig.DB_SSLROOTCERT)
-	gormConfig := &gorm.Config{}
-	if log.Level() != zap.DebugLevel {
-		gormConfig.Logger = gormlogger.Default.LogMode(gormlogger.Silent)
+
+	gormConfig := &gorm.Config{
+		DisableAutomaticPing: true, // manual polling handles readiness with context-aware ping
 	}
+	if err = serverdb.SetLogLevel(serverConfig.SQL_LOG_LEVEL); err != nil {
+		log.Warnf("Failed to configure sql log level: %v", err)
+	}
+
 	// Retry database connection, sometimes the database is not ready to accept connection
-	err = wait.PollImmediate(10*time.Second, 2*time.Minute, func() (bool, error) {
-		db, err = gorm.Open(postgres.Open(dbURI), gormConfig)
+	ctx := context.Background()
+	err = wait.PollUntilContextTimeout(ctx, 10*time.Second, 2*time.Minute, true, func(pollCtx context.Context) (bool, error) {
+		connection, err := gorm.Open(postgres.Open(dbURI), gormConfig)
 		if err != nil {
 			log.Warnf("Error connecting to database (retrying in 10s): %v", err)
 			return false, nil
 		}
+		sqlConn, err := connection.DB()
+		if err != nil {
+			log.Warnf("Error retrieving database handle (retrying in 10s): %v", err)
+			return false, nil
+		}
+		if err := sqlConn.PingContext(pollCtx); err != nil {
+			if closeErr := sqlConn.Close(); closeErr != nil {
+				log.Debugf("Failed to close db handle after ping failure: %v", closeErr)
+			}
+			if pollCtx.Err() != nil {
+				return false, pollCtx.Err()
+			}
+			log.Warnf("Database ping failed (retrying in 10s): %v", err)
+			return false, nil
+		}
+		db = connection
 		return true, nil
 	})
 	if err != nil {
@@ -140,6 +216,14 @@ func main() {
 		sqlDB.SetMaxIdleConns(maxIdle)
 	}
 
+	if serverConfig.CONVERTER_ENABLE {
+		log.Info("Starting api converter")
+		go func() {
+			conv := converter.New(log, db, serverConfig.CONVERTER_DB_LIMIT)
+			conv.Start(context.Background())
+		}()
+	}
+
 	// Set grpc worker pool
 	grpcWorkers := serverConfig.GRPC_WORKER_POOL
 	var streamWorkers grpc.ServerOption
@@ -149,7 +233,14 @@ func main() {
 
 	// Create the authorization authCheck
 	var authCheck auth.Checker
-	var serverMuxOptions []runtime.ServeMuxOption
+	serverMuxOptions := []runtime.ServeMuxOption{runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
+		MarshalOptions: protojson.MarshalOptions{
+			UseProtoNames: true,
+		},
+		UnmarshalOptions: protojson.UnmarshalOptions{
+			DiscardUnknown: true,
+		},
+	})}
 	if serverConfig.AUTH_DISABLE {
 		log.Warn("Kubernetes RBAC authorization check disabled - all requests will be allowed by the API server")
 		authCheck = &auth.AllowAll{}
@@ -202,15 +293,16 @@ func main() {
 
 	svrOpts := []grpc.ServerOption{
 		grpc.Creds(creds),
-		grpc_middleware.WithUnaryServerChain(
+		grpc_middleware.WithUnaryServerChain( //nolint:staticcheck // TODO: migrate to grpc.ChainUnaryInterceptor
 			// The grpc_ctxtags context updater should be before everything else
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(grpcLogger, zapOpts...),
 			grpc_auth.UnaryServerInterceptor(determineAuth),
 			prometheus.UnaryServerInterceptor,
+			fieldmask.UnaryServerInterceptor(f.Get(features.PartialResponse)),
 			recovery.UnaryServerInterceptor(recovery.WithRecoveryHandler(recoveryHandler)),
 		),
-		grpc_middleware.WithStreamServerChain(
+		grpc_middleware.WithStreamServerChain( //nolint:staticcheck // TODO: migrate to grpc.ChainStreamInterceptor
 			// The grpc_ctxtags context updater should be before everything else
 			grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.StreamServerInterceptor(grpcLogger, zapOpts...),
@@ -224,8 +316,12 @@ func main() {
 	}
 	gs := grpc.NewServer(svrOpts...)
 	v1alpha2pb.RegisterResultsServer(gs, v1a2)
-	if serverConfig.LOGS_API {
+	if serverConfig.LOGS_API && !v1a2.LogPluginServer.IsLogPluginEnabled {
+		log.Info("Registering gRPC Log server endpoints for Logs v1alpha2 API")
 		v1alpha2pb.RegisterLogsServer(gs, v1a2)
+	} else if serverConfig.LOGS_API && v1a2.LogPluginServer.IsLogPluginEnabled {
+		log.Info("Registering gRPC server endpoints for Logs v1alpha3 API")
+		v1alpha3pb.RegisterLogsServer(gs, v1a2.LogPluginServer)
 	}
 
 	// Allow service reflection - required for grpc_cli ls to work.
@@ -244,9 +340,12 @@ func main() {
 	// Set up health checks.
 	hs := health.NewServer()
 	hs.SetServingStatus("tekton.results.v1alpha2.Results", healthpb.HealthCheckResponse_SERVING)
-	if serverConfig.LOGS_API {
+	if serverConfig.LOGS_API && !v1a2.LogPluginServer.IsLogPluginEnabled {
 		hs.SetServingStatus("tekton.results.v1alpha2.Logs", healthpb.HealthCheckResponse_SERVING)
+	} else if serverConfig.LOGS_API && v1a2.LogPluginServer.IsLogPluginEnabled {
+		hs.SetServingStatus("tekton.results.v1alpha3.Logs", healthpb.HealthCheckResponse_SERVING)
 	}
+
 	healthpb.RegisterHealthServer(gs, hs)
 
 	// Start prometheus metrics server
@@ -265,22 +364,27 @@ func main() {
 	// Load client TLS to dial gRPC
 	if tlsError == nil {
 		// This is an internal client to proxy request from the REST listener to gRPC listener.
-		// So we don't need certificate verification here.
-		creds = credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
+		// So we don't need certificate verification here, but we still use the same TLS profile
+		clientTLSConfig := serverTLSConfig.Clone()
+		clientTLSConfig.InsecureSkipVerify = true
+		creds = credentials.NewTLS(clientTLSConfig)
 	}
 
 	// Setup gRPC gateway to proxy request to gRPC health checks
-	clientConn, err := grpc.Dial(":"+serverConfig.SERVER_PORT, grpc.WithTransportCredentials(creds), grpc.WithNoProxy())
+	clientConn, err := grpc.Dial(":"+serverConfig.SERVER_PORT, grpc.WithTransportCredentials(creds), grpc.WithNoProxy()) //nolint:staticcheck
 	if err != nil {
 		log.Fatalf("Error dialing gRPC endpoint: %v", err)
 	}
-	serverMuxOptions = append(serverMuxOptions, runtime.WithHealthzEndpoint(healthpb.NewHealthClient(clientConn)))
+	serverMuxOptions = append(serverMuxOptions,
+		runtime.WithHealthzEndpoint(healthpb.NewHealthClient(clientConn)),
+		runtime.WithMetadata(fieldmask.MetadataAnnotator),
+	)
 
 	// Create server for gRPC gateway
-	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	httpMux := runtime.NewServeMux(serverMuxOptions...)
+	var httpMux http.Handler
+	httpMux = runtime.NewServeMux(serverMuxOptions...)
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(100 * 1024 * 1024)),
@@ -288,24 +392,34 @@ func main() {
 	}
 
 	// Register gRPC server endpoint to gRPC gateway
-	err = v1alpha2pb.RegisterResultsHandlerFromEndpoint(ctx, httpMux, ":"+serverConfig.SERVER_PORT, opts)
+	err = v1alpha2pb.RegisterResultsHandlerFromEndpoint(ctx, httpMux.(*runtime.ServeMux), ":"+serverConfig.SERVER_PORT, opts)
 	if err != nil {
 		log.Fatal("Error registering gRPC server endpoint for Results API: ", err)
 	}
 
-	if serverConfig.LOGS_API {
-		err = v1alpha2pb.RegisterLogsHandlerFromEndpoint(ctx, httpMux, ":"+serverConfig.SERVER_PORT, opts)
+	if serverConfig.LOGS_API && !v1a2.LogPluginServer.IsLogPluginEnabled {
+		log.Info("Registering server endpoints for Logs v1alpha2 API")
+		err = v1alpha2pb.RegisterLogsHandlerFromEndpoint(ctx, httpMux.(*runtime.ServeMux), ":"+serverConfig.SERVER_PORT, opts)
 		if err != nil {
-			log.Fatal("Error registering gRPC server endpoints for Logs API: ", err)
+			log.Fatal("Error registering gRPC server endpoints for Logs v1alpha2 API: ", err)
 		}
 	}
+
+	httpMux = v1alpha2.Handler(httpMux, v1a2.LogPluginServer)
 
 	// Start server with gRPC and REST handler
 	log.Infof("gRPC and REST server listening on: %s", serverConfig.SERVER_PORT)
 	if tlsError != nil {
 		log.Fatal(http.ListenAndServe(":"+serverConfig.SERVER_PORT, grpcHandler(gs, httpMux)))
 	}
-	log.Fatal(http.ListenAndServeTLS(":"+serverConfig.SERVER_PORT, certFile, keyFile, grpcHandler(gs, httpMux)))
+
+	// Create HTTP server with TLS config
+	httpServer := &http.Server{
+		Addr:      ":" + serverConfig.SERVER_PORT,
+		Handler:   grpcHandler(gs, httpMux),
+		TLSConfig: serverTLSConfig,
+	}
+	log.Fatal(httpServer.ListenAndServeTLS(certFile, keyFile))
 }
 
 // grpcHandler forwards the request to gRPC server based on the Content-Type header.

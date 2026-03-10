@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/tektoncd/pipeline/pkg/apis/run/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"knative.dev/pkg/apis"
@@ -58,11 +59,16 @@ type CustomRunStatusFields struct {
 	Results []CustomRunResult `json:"results,omitempty"`
 
 	// RetriesStatus contains the history of CustomRunStatus, in case of a retry.
+	// See CustomRun.status (API version: tekton.dev/v1beta1)
 	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	RetriesStatus []CustomRunStatus `json:"retriesStatus,omitempty"`
 
 	// ExtraFields holds arbitrary fields provided by the custom task
 	// controller.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	ExtraFields runtime.RawExtension `json:"extraFields,omitempty"`
 }
 
@@ -144,4 +150,29 @@ func (r *CustomRunStatus) EncodeExtraFields(from interface{}) error {
 		Raw: data,
 	}
 	return nil
+}
+
+// FromRunStatus converts a v1alpha1.RunStatus into a corresponding v1beta1.CustomRunStatus
+func FromRunStatus(orig v1alpha1.RunStatus) CustomRunStatus {
+	crs := CustomRunStatus{
+		Status: orig.Status,
+		CustomRunStatusFields: CustomRunStatusFields{
+			StartTime:      orig.StartTime,
+			CompletionTime: orig.CompletionTime,
+			ExtraFields:    orig.ExtraFields,
+		},
+	}
+
+	for _, origRes := range orig.Results {
+		crs.Results = append(crs.Results, CustomRunResult{
+			Name:  origRes.Name,
+			Value: origRes.Value,
+		})
+	}
+
+	for _, origRetryStatus := range orig.RetriesStatus {
+		crs.RetriesStatus = append(crs.RetriesStatus, FromRunStatus(origRetryStatus))
+	}
+
+	return crs
 }
