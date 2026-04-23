@@ -22,6 +22,9 @@ import (
 	"time"
 
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1beta1listers "github.com/tektoncd/pipeline/pkg/client/listers/pipeline/v1beta1"
 	pipelinev1listers "github.com/tektoncd/pipeline/pkg/client/listers/pipeline/v1"
 	"github.com/tektoncd/results/pkg/watcher/reconciler"
 	resultsannotation "github.com/tektoncd/results/pkg/watcher/reconciler/annotation"
@@ -118,7 +121,11 @@ func TestAreAllUnderlyingTaskRunsReadyForDeletion(t *testing.T) {
 			Status: pipelinev1.PipelineRunStatus{
 				PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
 					ChildReferences: []pipelinev1.ChildStatusReference{{
-						Name: "foo",
+				TypeMeta: runtime.TypeMeta{
+					Kind:       "TaskRun",
+					APIVersion: "tekton.dev/v1",
+				},
+				Name: "foo",
 					},
 					},
 				},
@@ -132,10 +139,18 @@ func TestAreAllUnderlyingTaskRunsReadyForDeletion(t *testing.T) {
 				Status: pipelinev1.PipelineRunStatus{
 					PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
 						ChildReferences: []pipelinev1.ChildStatusReference{{
-							Name: "foo",
+				TypeMeta: runtime.TypeMeta{
+					Kind:       "TaskRun",
+					APIVersion: "tekton.dev/v1",
+				},
+				Name: "foo",
 						},
-							{
-								Name: "bar",
+				{
+					TypeMeta: runtime.TypeMeta{
+						Kind:       "TaskRun",
+						APIVersion: "tekton.dev/v1",
+					},
+					Name: "bar",
 							},
 						},
 					},
@@ -149,10 +164,18 @@ func TestAreAllUnderlyingTaskRunsReadyForDeletion(t *testing.T) {
 				Status: pipelinev1.PipelineRunStatus{
 					PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
 						ChildReferences: []pipelinev1.ChildStatusReference{{
-							Name: "foo",
+				TypeMeta: runtime.TypeMeta{
+					Kind:       "TaskRun",
+					APIVersion: "tekton.dev/v1",
+				},
+				Name: "foo",
 						},
-							{
-								Name: "baz",
+				{
+					TypeMeta: runtime.TypeMeta{
+						Kind:       "TaskRun",
+						APIVersion: "tekton.dev/v1",
+					},
+					Name: "baz",
 							},
 						},
 					},
@@ -440,6 +463,167 @@ func TestFinalize(t *testing.T) {
 			got := r.finalize(ctx, tc.pr, tc.reconcileError)
 			if !errors.Is(got, tc.want) {
 				t.Errorf("finalize() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAreAllUnderlyingRunsReadyForDeletion_WithCustomRuns(t *testing.T) {
+	tests := []struct {
+		name string
+		in   *pipelinev1.PipelineRun
+		want bool
+	}{{
+		name: "all CustomRuns are ready to be deleted",
+		in: &pipelinev1.PipelineRun{
+			Status: pipelinev1.PipelineRunStatus{
+				PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
+					ChildReferences: []pipelinev1.ChildStatusReference{{
+						TypeMeta: runtime.TypeMeta{
+							Kind:       "CustomRun",
+							APIVersion: "tekton.dev/v1beta1",
+						},
+						Name: "custom-foo",
+					}},
+				},
+			},
+		},
+		want: true,
+	},
+		{
+			name: "one CustomRun is ready, one TaskRun is not",
+			in: &pipelinev1.PipelineRun{
+				Status: pipelinev1.PipelineRunStatus{
+					PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
+						ChildReferences: []pipelinev1.ChildStatusReference{{
+							TypeMeta: runtime.TypeMeta{
+								Kind:       "TaskRun",
+								APIVersion: "tekton.dev/v1",
+							},
+							Name: "taskrun-bar",
+						}, {
+							TypeMeta: runtime.TypeMeta{
+								Kind:       "CustomRun",
+								APIVersion: "tekton.dev/v1beta1",
+							},
+							Name: "custom-foo",
+						}},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "all mixed children (TaskRun and CustomRun) are ready",
+			in: &pipelinev1.PipelineRun{
+				Status: pipelinev1.PipelineRunStatus{
+					PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
+						ChildReferences: []pipelinev1.ChildStatusReference{{
+							TypeMeta: runtime.TypeMeta{
+								Kind:       "TaskRun",
+								APIVersion: "tekton.dev/v1",
+							},
+							Name: "taskrun-foo",
+						}, {
+							TypeMeta: runtime.TypeMeta{
+								Kind:       "CustomRun",
+								APIVersion: "tekton.dev/v1beta1",
+							},
+							Name: "custom-bar",
+						}},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "consider that missing CustomRuns can be deleted",
+			in: &pipelinev1.PipelineRun{
+				Status: pipelinev1.PipelineRunStatus{
+					PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
+						ChildReferences: []pipelinev1.ChildStatusReference{{
+							TypeMeta: runtime.TypeMeta{
+								Kind:       "CustomRun",
+								APIVersion: "tekton.dev/v1beta1",
+							},
+							Name: "custom-missing",
+						}},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	taskRunIndexer := cache.NewIndexer(cache.DeletionHandlingMetaNamespaceKeyFunc, cache.Indexers{})
+	customRunIndexer := cache.NewIndexer(cache.DeletionHandlingMetaNamespaceKeyFunc, cache.Indexers{})
+
+	// Put TaskRuns into the indexer
+	if err := taskRunIndexer.Add(&pipelinev1.TaskRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "taskrun-foo",
+			Namespace: corev1.NamespaceDefault,
+			Annotations: map[string]string{
+				resultsannotation.ChildReadyForDeletion: "true",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := taskRunIndexer.Add(&pipelinev1.TaskRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "taskrun-bar",
+			Namespace: corev1.NamespaceDefault,
+			// Missing ChildReadyForDeletion annotation
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Put CustomRuns into the indexer
+	if err := customRunIndexer.Add(&pipelinev1beta1.CustomRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-foo",
+			Namespace: corev1.NamespaceDefault,
+			Annotations: map[string]string{
+				resultsannotation.ChildReadyForDeletion: "true",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := customRunIndexer.Add(&pipelinev1beta1.CustomRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-bar",
+			Namespace: corev1.NamespaceDefault,
+			Annotations: map[string]string{
+				resultsannotation.ChildReadyForDeletion: "true",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reconciler := &Reconciler{
+				taskRunLister:   pipelinev1listers.NewTaskRunLister(taskRunIndexer),
+				customRunLister: pipelinev1beta1listers.NewCustomRunLister(customRunIndexer),
+			}
+
+			test.in.Namespace = corev1.NamespaceDefault
+
+			ctx := context.Background()
+			ctx = logging.WithLogger(ctx, zaptest.NewLogger(t).Sugar())
+			got, err := reconciler.areAllUnderlyingTaskRunsReadyForDeletion(ctx, test.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if test.want != got {
+				t.Fatalf("Want %t, but got %t", test.want, got)
 			}
 		})
 	}

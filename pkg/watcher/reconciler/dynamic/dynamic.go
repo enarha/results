@@ -30,6 +30,7 @@ import (
 	tknlog "github.com/tektoncd/cli/pkg/log"
 	tknopts "github.com/tektoncd/cli/pkg/options"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/log"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/record"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/result"
@@ -578,7 +579,7 @@ func (r *Reconciler) storeEvents(ctx context.Context, o results.Object) error {
 	condition := o.GetStatusCondition().GetCondition(apis.ConditionSucceeded)
 	GVK := o.GetObjectKind().GroupVersionKind()
 	if !GVK.Empty() &&
-		(GVK.Kind == "TaskRun" || GVK.Kind == "PipelineRun") &&
+		(GVK.Kind == "TaskRun" || GVK.Kind == "PipelineRun" || GVK.Kind == "CustomRun") &&
 		condition != nil &&
 		!condition.IsUnknown() {
 
@@ -697,6 +698,14 @@ func (r *Reconciler) addStoredAnnotations(ctx context.Context, o results.Object)
 			return fmt.Errorf("failed to cast object to PipelineRun")
 		}
 		if pipelineRun.IsDone() {
+			stored = annotation.Annotation{Name: annotation.Stored, Value: "true"}
+		}
+	case "CustomRun":
+		customRun, ok := o.(*pipelinev1beta1.CustomRun)
+		if !ok {
+			return fmt.Errorf("failed to cast object to CustomRun")
+		}
+		if customRun.IsDone() {
 			stored = annotation.Annotation{Name: annotation.Stored, Value: "true"}
 		}
 	default:
