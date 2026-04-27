@@ -6,12 +6,13 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Describes repositories that are in a public registry.
+// Describes repositories in a public registry.
 func (c *Client) DescribeRepositories(ctx context.Context, params *DescribeRepositoriesInput, optFns ...func(*Options)) (*DescribeRepositoriesOutput, error) {
 	if params == nil {
 		params = &DescribeRepositoriesInput{}
@@ -29,31 +30,29 @@ func (c *Client) DescribeRepositories(ctx context.Context, params *DescribeRepos
 
 type DescribeRepositoriesInput struct {
 
-	// The maximum number of repository results that's returned by DescribeRepositories
-	// in paginated output. When this parameter is used, DescribeRepositories only
-	// returns maxResults results in a single page along with a nextToken response
-	// element. You can see the remaining results of the initial request by sending
-	// another DescribeRepositories request with the returned nextToken value. This
-	// value can be between 1 and 1000. If this parameter isn't used, then
-	// DescribeRepositories returns up to 100 results and a nextToken value, if
-	// applicable. If you specify repositories with repositoryNames , you can't use
-	// this option.
+	// The maximum number of repository results returned by DescribeRepositories in
+	// paginated output. When this parameter is used, DescribeRepositories only returns
+	// maxResults results in a single page along with a nextToken response element. The
+	// remaining results of the initial request can be seen by sending another
+	// DescribeRepositories request with the returned nextToken value. This value can
+	// be between 1 and 1000. If this parameter is not used, then DescribeRepositories
+	// returns up to 100 results and a nextToken value, if applicable. This option
+	// cannot be used when you specify repositories with repositoryNames.
 	MaxResults *int32
 
-	// The nextToken value that's returned from a previous paginated
-	// DescribeRepositories request where maxResults was used and the results exceeded
-	// the value of that parameter. Pagination continues from the end of the previous
-	// results that returned the nextToken value. If there are no more results to
-	// return, this value is null . If you specify repositories with repositoryNames ,
-	// you can't use this option.
-	//
-	// This token should be treated as an opaque identifier that is only used to
-	// retrieve the next items in a list and not for other programmatic purposes.
+	// The nextToken value returned from a previous paginated DescribeRepositories
+	// request where maxResults was used and the results exceeded the value of that
+	// parameter. Pagination continues from the end of the previous results that
+	// returned the nextToken value. This value is null when there are no more results
+	// to return. This option cannot be used when you specify repositories with
+	// repositoryNames. This token should be treated as an opaque identifier that is
+	// only used to retrieve the next items in a list and not for other programmatic
+	// purposes.
 	NextToken *string
 
-	// The Amazon Web Services account ID that's associated with the registry that
-	// contains the repositories to be described. If you do not specify a registry, the
-	// default public registry is assumed.
+	// The AWS account ID associated with the registry that contains the repositories
+	// to be described. If you do not specify a registry, the default public registry
+	// is assumed.
 	RegistryId *string
 
 	// A list of repositories to describe. If this parameter is omitted, then all
@@ -66,9 +65,9 @@ type DescribeRepositoriesInput struct {
 type DescribeRepositoriesOutput struct {
 
 	// The nextToken value to include in a future DescribeRepositories request. When
-	// the results of a DescribeRepositories request exceed maxResults , this value can
-	// be used to retrieve the next page of results. If there are no more results to
-	// return, this value is null .
+	// the results of a DescribeRepositories request exceed maxResults, this value can
+	// be used to retrieve the next page of results. This value is null when there are
+	// no more results to return.
 	NextToken *string
 
 	// A list of repository objects corresponding to valid repositories.
@@ -81,9 +80,6 @@ type DescribeRepositoriesOutput struct {
 }
 
 func (c *Client) addOperationDescribeRepositoriesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeRepositories{}, middleware.After)
 	if err != nil {
 		return err
@@ -92,41 +88,34 @@ func (c *Client) addOperationDescribeRepositoriesMiddlewares(stack *middleware.S
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeRepositories"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
-
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addClientRequestID(stack); err != nil {
+	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addComputeContentLength(stack); err != nil {
+	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addComputePayloadSHA256(stack); err != nil {
+	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetryMiddlewares(stack, options); err != nil {
 		return err
 	}
-	if err = addRawResponseToMetadata(stack); err != nil {
+	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
+	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack, options); err != nil {
+	if err = addClientUserAgent(stack); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -135,19 +124,7 @@ func (c *Client) addOperationDescribeRepositoriesMiddlewares(stack *middleware.S
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeRepositories(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -159,36 +136,28 @@ func (c *Client) addOperationDescribeRepositoriesMiddlewares(stack *middleware.S
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
-		return err
-	}
 	return nil
 }
+
+// DescribeRepositoriesAPIClient is a client that implements the
+// DescribeRepositories operation.
+type DescribeRepositoriesAPIClient interface {
+	DescribeRepositories(context.Context, *DescribeRepositoriesInput, ...func(*Options)) (*DescribeRepositoriesOutput, error)
+}
+
+var _ DescribeRepositoriesAPIClient = (*Client)(nil)
 
 // DescribeRepositoriesPaginatorOptions is the paginator options for
 // DescribeRepositories
 type DescribeRepositoriesPaginatorOptions struct {
-	// The maximum number of repository results that's returned by DescribeRepositories
-	// in paginated output. When this parameter is used, DescribeRepositories only
-	// returns maxResults results in a single page along with a nextToken response
-	// element. You can see the remaining results of the initial request by sending
-	// another DescribeRepositories request with the returned nextToken value. This
-	// value can be between 1 and 1000. If this parameter isn't used, then
-	// DescribeRepositories returns up to 100 results and a nextToken value, if
-	// applicable. If you specify repositories with repositoryNames , you can't use
-	// this option.
+	// The maximum number of repository results returned by DescribeRepositories in
+	// paginated output. When this parameter is used, DescribeRepositories only returns
+	// maxResults results in a single page along with a nextToken response element. The
+	// remaining results of the initial request can be seen by sending another
+	// DescribeRepositories request with the returned nextToken value. This value can
+	// be between 1 and 1000. If this parameter is not used, then DescribeRepositories
+	// returns up to 100 results and a nextToken value, if applicable. This option
+	// cannot be used when you specify repositories with repositoryNames.
 	Limit int32
 
 	// Set to true if pagination should stop if the service returns a pagination token
@@ -249,9 +218,6 @@ func (p *DescribeRepositoriesPaginator) NextPage(ctx context.Context, optFns ...
 	}
 	params.MaxResults = limit
 
-	optFns = append([]func(*Options){
-		addIsPaginatorUserAgent,
-	}, optFns...)
 	result, err := p.client.DescribeRepositories(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -271,18 +237,11 @@ func (p *DescribeRepositoriesPaginator) NextPage(ctx context.Context, optFns ...
 	return result, nil
 }
 
-// DescribeRepositoriesAPIClient is a client that implements the
-// DescribeRepositories operation.
-type DescribeRepositoriesAPIClient interface {
-	DescribeRepositories(context.Context, *DescribeRepositoriesInput, ...func(*Options)) (*DescribeRepositoriesOutput, error)
-}
-
-var _ DescribeRepositoriesAPIClient = (*Client)(nil)
-
 func newServiceMetadataMiddleware_opDescribeRepositories(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
+		SigningName:   "ecr-public",
 		OperationName: "DescribeRepositories",
 	}
 }

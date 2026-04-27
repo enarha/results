@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -34,26 +35,26 @@ type DescribeImageTagsInput struct {
 	// This member is required.
 	RepositoryName *string
 
-	// The maximum number of repository results that's returned by DescribeImageTags
-	// in paginated output. When this parameter is used, DescribeImageTags only
-	// returns maxResults results in a single page along with a nextToken response
-	// element. You can see the remaining results of the initial request by sending
-	// another DescribeImageTags request with the returned nextToken value. This value
-	// can be between 1 and 1000. If this parameter isn't used, then DescribeImageTags
-	// returns up to 100 results and a nextToken value, if applicable. If you specify
-	// images with imageIds , you can't use this option.
+	// The maximum number of repository results returned by DescribeImageTags in
+	// paginated output. When this parameter is used, DescribeImageTags only returns
+	// maxResults results in a single page along with a nextToken response element. The
+	// remaining results of the initial request can be seen by sending another
+	// DescribeImageTags request with the returned nextToken value. This value can be
+	// between 1 and 1000. If this parameter is not used, then DescribeImageTags
+	// returns up to 100 results and a nextToken value, if applicable. This option
+	// cannot be used when you specify images with imageIds.
 	MaxResults *int32
 
-	// The nextToken value that's returned from a previous paginated DescribeImageTags
-	// request where maxResults was used and the results exceeded the value of that
-	// parameter. Pagination continues from the end of the previous results that
-	// returned the nextToken value. If there are no more results to return, this
-	// value is null . If you specify images with imageIds , you can't use this option.
+	// The nextToken value returned from a previous paginated DescribeImageTags request
+	// where maxResults was used and the results exceeded the value of that parameter.
+	// Pagination continues from the end of the previous results that returned the
+	// nextToken value. This value is null when there are no more results to return.
+	// This option cannot be used when you specify images with imageIds.
 	NextToken *string
 
-	// The Amazon Web Services account ID that's associated with the public registry
-	// that contains the repository where images are described. If you do not specify a
-	// registry, the default public registry is assumed.
+	// The AWS account ID associated with the public registry that contains the
+	// repository in which to describe images. If you do not specify a registry, the
+	// default public registry is assumed.
 	RegistryId *string
 
 	noSmithyDocumentSerde
@@ -65,9 +66,9 @@ type DescribeImageTagsOutput struct {
 	ImageTagDetails []types.ImageTagDetail
 
 	// The nextToken value to include in a future DescribeImageTags request. When the
-	// results of a DescribeImageTags request exceed maxResults , you can use this
-	// value to retrieve the next page of results. If there are no more results to
-	// return, this value is null .
+	// results of a DescribeImageTags request exceed maxResults, this value can be used
+	// to retrieve the next page of results. This value is null when there are no more
+	// results to return.
 	NextToken *string
 
 	// Metadata pertaining to the operation's result.
@@ -77,9 +78,6 @@ type DescribeImageTagsOutput struct {
 }
 
 func (c *Client) addOperationDescribeImageTagsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeImageTags{}, middleware.After)
 	if err != nil {
 		return err
@@ -88,41 +86,34 @@ func (c *Client) addOperationDescribeImageTagsMiddlewares(stack *middleware.Stac
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeImageTags"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
-
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addClientRequestID(stack); err != nil {
+	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addComputeContentLength(stack); err != nil {
+	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addComputePayloadSHA256(stack); err != nil {
+	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetryMiddlewares(stack, options); err != nil {
 		return err
 	}
-	if err = addRawResponseToMetadata(stack); err != nil {
+	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
+	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack, options); err != nil {
+	if err = addClientUserAgent(stack); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -131,22 +122,10 @@ func (c *Client) addOperationDescribeImageTagsMiddlewares(stack *middleware.Stac
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = addOpDescribeImageTagsValidationMiddleware(stack); err != nil {
 		return err
 	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeImageTags(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -158,34 +137,27 @@ func (c *Client) addOperationDescribeImageTagsMiddlewares(stack *middleware.Stac
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
-		return err
-	}
 	return nil
 }
 
+// DescribeImageTagsAPIClient is a client that implements the DescribeImageTags
+// operation.
+type DescribeImageTagsAPIClient interface {
+	DescribeImageTags(context.Context, *DescribeImageTagsInput, ...func(*Options)) (*DescribeImageTagsOutput, error)
+}
+
+var _ DescribeImageTagsAPIClient = (*Client)(nil)
+
 // DescribeImageTagsPaginatorOptions is the paginator options for DescribeImageTags
 type DescribeImageTagsPaginatorOptions struct {
-	// The maximum number of repository results that's returned by DescribeImageTags
-	// in paginated output. When this parameter is used, DescribeImageTags only
-	// returns maxResults results in a single page along with a nextToken response
-	// element. You can see the remaining results of the initial request by sending
-	// another DescribeImageTags request with the returned nextToken value. This value
-	// can be between 1 and 1000. If this parameter isn't used, then DescribeImageTags
-	// returns up to 100 results and a nextToken value, if applicable. If you specify
-	// images with imageIds , you can't use this option.
+	// The maximum number of repository results returned by DescribeImageTags in
+	// paginated output. When this parameter is used, DescribeImageTags only returns
+	// maxResults results in a single page along with a nextToken response element. The
+	// remaining results of the initial request can be seen by sending another
+	// DescribeImageTags request with the returned nextToken value. This value can be
+	// between 1 and 1000. If this parameter is not used, then DescribeImageTags
+	// returns up to 100 results and a nextToken value, if applicable. This option
+	// cannot be used when you specify images with imageIds.
 	Limit int32
 
 	// Set to true if pagination should stop if the service returns a pagination token
@@ -246,9 +218,6 @@ func (p *DescribeImageTagsPaginator) NextPage(ctx context.Context, optFns ...fun
 	}
 	params.MaxResults = limit
 
-	optFns = append([]func(*Options){
-		addIsPaginatorUserAgent,
-	}, optFns...)
 	result, err := p.client.DescribeImageTags(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -268,18 +237,11 @@ func (p *DescribeImageTagsPaginator) NextPage(ctx context.Context, optFns ...fun
 	return result, nil
 }
 
-// DescribeImageTagsAPIClient is a client that implements the DescribeImageTags
-// operation.
-type DescribeImageTagsAPIClient interface {
-	DescribeImageTags(context.Context, *DescribeImageTagsInput, ...func(*Options)) (*DescribeImageTagsOutput, error)
-}
-
-var _ DescribeImageTagsAPIClient = (*Client)(nil)
-
 func newServiceMetadataMiddleware_opDescribeImageTags(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
+		SigningName:   "ecr-public",
 		OperationName: "DescribeImageTags",
 	}
 }

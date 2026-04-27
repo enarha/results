@@ -27,7 +27,6 @@ import (
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/metrics"
 )
 
 // TlsTransportCache caches TLS http.RoundTrippers different configurations. The
@@ -81,16 +80,11 @@ func (c *tlsTransportCache) get(config *Config) (http.RoundTripper, error) {
 		// Ensure we only create a single transport for the given TLS options
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		defer metrics.TransportCacheEntries.Observe(len(c.transports))
 
 		// See if we already have a custom transport for this config
 		if t, ok := c.transports[key]; ok {
-			metrics.TransportCreateCalls.Increment("hit")
 			return t, nil
 		}
-		metrics.TransportCreateCalls.Increment("miss")
-	} else {
-		metrics.TransportCreateCalls.Increment("uncacheable")
 	}
 
 	// Get the TLS options for this client config
@@ -99,13 +93,13 @@ func (c *tlsTransportCache) get(config *Config) (http.RoundTripper, error) {
 		return nil, err
 	}
 	// The options didn't require a custom TLS config
-	if tlsConfig == nil && config.DialHolder == nil && config.Proxy == nil {
+	if tlsConfig == nil && config.Dial == nil && config.Proxy == nil {
 		return http.DefaultTransport, nil
 	}
 
 	var dial func(ctx context.Context, network, address string) (net.Conn, error)
-	if config.DialHolder != nil {
-		dial = config.DialHolder.Dial
+	if config.Dial != nil {
+		dial = config.Dial
 	} else {
 		dial = (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -153,6 +147,14 @@ func tlsConfigKey(c *Config) (tlsCacheKey, bool, error) {
 
 	if c.Proxy != nil {
 		// cannot determine equality for functions
+		return tlsCacheKey{}, false, nil
+	}
+	if c.Dial != nil && c.DialHolder == nil {
+		// cannot determine equality for dial function that doesn't have non-nil DialHolder set as well
+		return tlsCacheKey{}, false, nil
+	}
+	if c.TLS.GetCert != nil && c.TLS.GetCertHolder == nil {
+		// cannot determine equality for getCert function that doesn't have non-nil GetCertHolder set as well
 		return tlsCacheKey{}, false, nil
 	}
 

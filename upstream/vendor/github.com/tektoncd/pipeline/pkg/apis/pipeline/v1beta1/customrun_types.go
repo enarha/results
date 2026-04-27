@@ -53,7 +53,8 @@ type CustomRunSpec struct {
 	CustomSpec *EmbeddedCustomRunSpec `json:"customSpec,omitempty"`
 
 	// +optional
-	Params Params `json:"params,omitempty"`
+	// +listType=atomic
+	Params []Param `json:"params,omitempty"`
 
 	// Used for cancelling a customrun (and maybe more later on)
 	// +optional
@@ -193,7 +194,7 @@ func (r *CustomRun) GetStatusCondition() apis.ConditionAccessor {
 
 // GetGroupVersionKind implements kmeta.OwnerRefable.
 func (*CustomRun) GetGroupVersionKind() schema.GroupVersionKind {
-	return SchemeGroupVersion.WithKind(pipeline.CustomRunControllerName)
+	return SchemeGroupVersion.WithKind(pipeline.RunControllerName)
 }
 
 // HasPipelineRunOwnerReference returns true of CustomRun has
@@ -222,14 +223,9 @@ func (r *CustomRun) HasStarted() bool {
 	return r.Status.StartTime != nil && !r.Status.StartTime.IsZero()
 }
 
-// IsSuccessful returns true if the CustomRun's status indicates that it has succeeded.
+// IsSuccessful returns true if the CustomRun's status indicates that it is done.
 func (r *CustomRun) IsSuccessful() bool {
 	return r != nil && r.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
-}
-
-// IsFailure returns true if the CustomRun's status indicates that it has failed.
-func (r *CustomRun) IsFailure() bool {
-	return r != nil && r.Status.GetCondition(apis.ConditionSucceeded).IsFalse()
 }
 
 // GetCustomRunKey return the customrun's key for timeout handler map
@@ -259,9 +255,4 @@ func (r *CustomRun) GetTimeout() time.Duration {
 		return apisconfig.DefaultTimeoutMinutes * time.Minute
 	}
 	return r.Spec.Timeout.Duration
-}
-
-// GetRetryCount returns the number of times this CustomRun has already been retried
-func (r *CustomRun) GetRetryCount() int {
-	return len(r.Status.RetriesStatus)
 }

@@ -4,10 +4,7 @@
 // an allocation is purposely not documented. https://github.com/golang/go/issues/16323
 package iobufpool
 
-import (
-	"math/bits"
-	"sync"
-)
+import "sync"
 
 const minPoolExpOf2 = 8
 
@@ -40,14 +37,15 @@ func Get(size int) *[]byte {
 }
 
 func getPoolIdx(size int) int {
-	if size < 2 {
-		return 0
+	size--
+	size >>= minPoolExpOf2
+	i := 0
+	for size > 0 {
+		size >>= 1
+		i++
 	}
-	idx := bits.Len(uint(size-1)) - minPoolExpOf2
-	if idx < 0 {
-		return 0
-	}
-	return idx
+
+	return i
 }
 
 // Put returns buf to the pool.
@@ -61,18 +59,12 @@ func Put(buf *[]byte) {
 }
 
 func putPoolIdx(size int) int {
-	// Only exact power-of-2 sizes match pool buckets
-	if size&(size-1) != 0 {
-		return -1
+	minPoolSize := 1 << minPoolExpOf2
+	for i := range pools {
+		if size == minPoolSize<<i {
+			return i
+		}
 	}
 
-	// Calculate log2(size) using trailing zeros count
-	exp := bits.TrailingZeros(uint(size))
-	idx := exp - minPoolExpOf2
-
-	if idx < 0 || idx >= len(pools) {
-		return -1
-	}
-
-	return idx
+	return -1
 }

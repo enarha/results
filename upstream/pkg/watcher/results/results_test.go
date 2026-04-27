@@ -24,7 +24,7 @@ import (
 	"knative.dev/pkg/kmeta"
 
 	"github.com/google/go-cmp/cmp"
-	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tektoncd/results/pkg/internal/protoutil"
 	"github.com/tektoncd/results/pkg/internal/test"
 	"github.com/tektoncd/results/pkg/watcher/convert"
@@ -41,9 +41,9 @@ func TestDefaultName(t *testing.T) {
 	want := "id"
 
 	objs := []metav1.Object{
-		&pipelinev1.TaskRun{
+		&v1beta1.TaskRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "TaskRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -52,9 +52,9 @@ func TestDefaultName(t *testing.T) {
 				UID:       "id",
 			},
 		},
-		&pipelinev1.PipelineRun{
+		&v1beta1.PipelineRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "PipelineRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -123,9 +123,9 @@ func TestResultName(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &pipelinev1.TaskRun{
+			o := &v1beta1.TaskRun{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "tekton.dev/v1",
+					APIVersion: "tekton.dev/v1beta1",
 					Kind:       "TaskRun",
 				},
 				ObjectMeta: metav1.ObjectMeta{
@@ -151,7 +151,7 @@ func TestRecordName(t *testing.T) {
 		want string
 	}{{
 		name: "derive the record name from the parent name and the record's default name",
-		in: &pipelinev1.TaskRun{
+		in: &v1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				UID: types.UID("uid"),
 			},
@@ -160,7 +160,7 @@ func TestRecordName(t *testing.T) {
 	},
 		{
 			name: "read the record name from the record annotation",
-			in: &pipelinev1.TaskRun{
+			in: &v1beta1.TaskRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						annotation.Record: "foo/results/bar/records/baz",
@@ -172,14 +172,14 @@ func TestRecordName(t *testing.T) {
 		},
 		{
 			name: "do not read the record annotation if the object is owned by another object",
-			in: &pipelinev1.TaskRun{
+			in: &v1beta1.TaskRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
 						annotation.Record: "foo/results/bar/records/baz",
 					},
 					UID: types.UID("uid"),
 					OwnerReferences: []metav1.OwnerReference{
-						*kmeta.NewControllerRef(&pipelinev1.PipelineRun{}),
+						*kmeta.NewControllerRef(&v1beta1.PipelineRun{}),
 					},
 				},
 			},
@@ -236,24 +236,24 @@ func TestEnsureResult(t *testing.T) {
 	client := client(t)
 
 	objs := []Object{
-		&pipelinev1.TaskRun{
+		&v1beta1.TaskRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "TaskRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo",
+				Name:      "taskrun",
 				Namespace: "test",
 				UID:       "taskrun-id",
 			},
 		},
-		&pipelinev1.PipelineRun{
+		&v1beta1.PipelineRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "PipelineRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo",
+				Name:      "pipelinerun",
 				Namespace: "test",
 				UID:       "pipelinerun-id",
 			},
@@ -280,7 +280,6 @@ func TestEnsureResult(t *testing.T) {
 					Record: recordName(name, o),
 					Type:   convert.TypeName(o),
 				},
-				Annotations: map[string]string{"object.metadata.name": "foo"},
 			}
 			if diff := cmp.Diff(want, create, protocmp.Transform(), protoutil.IgnoreResultOutputOnly()); diff != "" {
 				t.Errorf("Create Result diff (-want, +got):\n%s", diff)
@@ -304,14 +303,13 @@ func TestEnsureResult_RecordSummaryUpdate(t *testing.T) {
 	ctx := logtest.TestContextWithLogger(t)
 	client := client(t)
 
-	pr := &pipelinev1.PipelineRun{
+	pr := &v1beta1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
 			Namespace: "default",
 			UID:       "1",
 		},
 	}
-	tr := &pipelinev1.TaskRun{
+	tr := &v1beta1.TaskRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       pr.Namespace,
 			UID:             "2",
@@ -341,7 +339,6 @@ func TestEnsureResult_RecordSummaryUpdate(t *testing.T) {
 			Record: recordName(resultName(pr), pr),
 			Type:   convert.TypeName(pr),
 		},
-		Annotations: map[string]string{"object.metadata.name": "foo"},
 	}
 	if diff := cmp.Diff(got, want, protocmp.Transform(), protoutil.IgnoreResultOutputOnly()); diff != "" {
 		t.Fatal(diff)
@@ -352,9 +349,8 @@ func TestAnnotations(t *testing.T) {
 	ctx := logtest.TestContextWithLogger(t)
 	client := client(t)
 
-	pipelineRun := &pipelinev1.PipelineRun{
+	pipelineRun := &v1beta1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
 			Namespace: "default",
 			Annotations: map[string]string{
 				annotation.ResultAnnotations:        `{"x": "y", "i": 7}`,
@@ -370,7 +366,7 @@ func TestAnnotations(t *testing.T) {
 	}
 
 	if diff := cmp.Diff(map[string]string{
-		"x": "y", "object.metadata.name": "foo", "i": "7",
+		"x": "y", "i": "7",
 	}, result.Annotations); diff != "" {
 		t.Errorf("Result.Annotations: mismatch (-want +got):\n%s", diff)
 	}
@@ -387,9 +383,9 @@ func TestUpsertRecord(t *testing.T) {
 	client := client(t)
 
 	objs := []Object{
-		&pipelinev1.TaskRun{
+		&v1beta1.TaskRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "TaskRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -398,20 +394,20 @@ func TestUpsertRecord(t *testing.T) {
 				UID:        "taskrun-id",
 				Generation: 1,
 			},
-			Status: pipelinev1.TaskRunStatus{
-				TaskRunStatusFields: pipelinev1.TaskRunStatusFields{
-					Results: []pipelinev1.TaskRunResult{
+			Status: v1beta1.TaskRunStatus{
+				TaskRunStatusFields: v1beta1.TaskRunStatusFields{
+					TaskRunResults: []v1beta1.TaskRunResult{
 						{
 							Name:  "result1",
-							Value: *pipelinev1.NewStructuredValues("value1"),
+							Value: *v1beta1.NewArrayOrString("value1"),
 						},
 					},
 				},
 			},
 		},
-		&pipelinev1.PipelineRun{
+		&v1beta1.PipelineRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "PipelineRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -420,12 +416,12 @@ func TestUpsertRecord(t *testing.T) {
 				UID:        "pipelinerun-id",
 				Generation: 1,
 			},
-			Status: pipelinev1.PipelineRunStatus{
-				PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
-					Results: []pipelinev1.PipelineRunResult{
+			Status: v1beta1.PipelineRunStatus{
+				PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+					PipelineResults: []v1beta1.PipelineRunResult{
 						{
 							Name:  "result1",
-							Value: *pipelinev1.NewStructuredValues("value1"),
+							Value: *v1beta1.NewArrayOrString("value1"),
 						},
 					},
 				},
@@ -489,9 +485,9 @@ func TestUpsertRecord(t *testing.T) {
 
 				switch o.GetName() {
 				case "taskrun":
-					updated = &pipelinev1.TaskRun{
+					updated = &v1beta1.TaskRun{
 						TypeMeta: metav1.TypeMeta{
-							APIVersion: "tekton.dev/v1",
+							APIVersion: "tekton.dev/v1beta1",
 							Kind:       "TaskRun",
 						},
 						ObjectMeta: metav1.ObjectMeta{
@@ -500,21 +496,21 @@ func TestUpsertRecord(t *testing.T) {
 							UID:        "taskrun-id",
 							Generation: 1,
 						},
-						Status: pipelinev1.TaskRunStatus{
-							TaskRunStatusFields: pipelinev1.TaskRunStatusFields{
-								Results: []pipelinev1.TaskRunResult{
+						Status: v1beta1.TaskRunStatus{
+							TaskRunStatusFields: v1beta1.TaskRunStatusFields{
+								TaskRunResults: []v1beta1.TaskRunResult{
 									{
 										Name:  "result1",
-										Value: *pipelinev1.NewStructuredValues("value1-updated"),
+										Value: *v1beta1.NewArrayOrString("value1-updated"),
 									},
 								},
 							},
 						},
 					}
 				case "pipelinerun":
-					updated = &pipelinev1.PipelineRun{
+					updated = &v1beta1.PipelineRun{
 						TypeMeta: metav1.TypeMeta{
-							APIVersion: "tekton.dev/v1",
+							APIVersion: "tekton.dev/v1beta1",
 							Kind:       "PipelineRun",
 						},
 						ObjectMeta: metav1.ObjectMeta{
@@ -523,12 +519,12 @@ func TestUpsertRecord(t *testing.T) {
 							UID:        "pipelinerun-id",
 							Generation: 1,
 						},
-						Status: pipelinev1.PipelineRunStatus{
-							PipelineRunStatusFields: pipelinev1.PipelineRunStatusFields{
-								Results: []pipelinev1.PipelineRunResult{
+						Status: v1beta1.PipelineRunStatus{
+							PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+								PipelineResults: []v1beta1.PipelineRunResult{
 									{
 										Name:  "result1",
-										Value: *pipelinev1.NewStructuredValues("value1-update"),
+										Value: *v1beta1.NewArrayOrString("value1-update"),
 									},
 								},
 							},
@@ -557,9 +553,9 @@ func TestPut(t *testing.T) {
 	client := client(t)
 
 	objs := []Object{
-		&pipelinev1.TaskRun{
+		&v1beta1.TaskRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "TaskRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -568,9 +564,9 @@ func TestPut(t *testing.T) {
 				UID:       "taskrun-id",
 			},
 		},
-		&pipelinev1.PipelineRun{
+		&v1beta1.PipelineRun{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "tekton.dev/v1",
+				APIVersion: "tekton.dev/v1beta1",
 				Kind:       "PipelineRun",
 			},
 			ObjectMeta: metav1.ObjectMeta{

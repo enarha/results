@@ -8,8 +8,7 @@ TESTPKGS = $(shell env GO111MODULE=on $(GO) list -f \
 			$(PKGS))
 BIN      = $(CURDIR)/.bin
 
-# Get golangci_version from tools/go.mod
-GOLANGCI_VERSION := $(shell yq '.jobs.golangci.steps[] | select(.name == "golangci-lint") | .with.version' .github/workflows/golangci-lint.yaml)
+GOLANGCI_VERSION = v1.52.2
 
 GO           = go
 TIMEOUT_UNIT = 5m
@@ -34,10 +33,6 @@ $(BIN)/%: | $(BIN) ; $(info $(M) building $(PACKAGE)…)
 		|| ret=$$?; \
 	   rm -rf $$tmp ; exit $$ret
 
-FORCE:
-
-bin/%: cmd/% FORCE
-	$Q $(GO) build -mod=vendor $(LDFLAGS) -v -o $@ ./$<
 ## Linters configuration and targets
 # TODO(vdemeester) gofmt and goimports checks (run them with -w and make a diff)
 
@@ -80,14 +75,13 @@ $(BIN)/errcheck: PACKAGE=github.com/kisielk/errcheck
 errcheck: | $(ERRCHECK) ; $(info $(M) running errcheck…) ## Run errcheck
 	$Q $(ERRCHECK) ./...
 
-GOLANGCILINT = $(BIN)/golangci-lint-$(GOLANGCI_VERSION)
-$(BIN)/golangci-lint-$(GOLANGCI_VERSION): ; $(info $(M) getting golangci-lint $(GOLANGCI_VERSION))
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BIN) $(GOLANGCI_VERSION)
-	mv $(BIN)/golangci-lint $(BIN)/golangci-lint-$(GOLANGCI_VERSION)
+GOLANGCILINT = $(BIN)/golangci-lint
+$(BIN)/golangci-lint: ; $(info $(M) getting golangci-lint $(GOLANGCI_VERSION))
+	cd tools; GOBIN=$(BIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 .PHONY: golangci-lint
 golangci-lint: | $(GOLANGCILINT) ; $(info $(M) running golangci-lint…) @ ## Run golangci-lint
-	$Q $(GOLANGCILINT) run --verbose --modules-download-mode=vendor --max-issues-per-linter=0 --max-same-issues=0 --timeout 10m
+	$Q $(GOLANGCILINT) run --verbose --modules-download-mode=vendor --max-issues-per-linter=0 --max-same-issues=0 --deadline 15m
 
 .PHONY: golangci-lint-check
 golangci-lint-check: | $(GOLANGCILINT) ; $(info $(M) Testing if golint has been done…) @ ## Run golangci-lint for build tests CI job
@@ -105,10 +99,8 @@ fmt: ; $(info $(M) running gofmt…) @ ## Run gofmt on all source files
 	$Q $(GO) fmt $(PKGS)
 
 .PHONY: cli-docs
-cli-docs: ; $(info $(M) Generating docs…) ## update docs
-	@mkdir -p ./docs/cli ./docs/man/man1
-	@go run ./cmd/cli-docs --root=. --target=./docs/cli
-	@go run ./cmd/cli-docs --root=. --target=./docs/man/man1 --kind=man
+cli-docs: ; $(info $(M) generating tkn-results docs) ## Generate tkn-results docs
+	$(GO) run ./cmd/cli-docs
 
 # Misc
 

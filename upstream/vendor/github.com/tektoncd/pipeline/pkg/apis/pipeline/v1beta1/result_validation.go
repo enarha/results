@@ -17,8 +17,8 @@ import (
 	"context"
 	"fmt"
 
-	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
+	"github.com/tektoncd/pipeline/pkg/apis/config"
+	"github.com/tektoncd/pipeline/pkg/apis/version"
 	"knative.dev/pkg/apis"
 )
 
@@ -27,26 +27,32 @@ func (tr TaskResult) Validate(ctx context.Context) (errs *apis.FieldError) {
 	if !resultNameFormatRegex.MatchString(tr.Name) {
 		return apis.ErrInvalidKeyName(tr.Name, "name", fmt.Sprintf("Name must consist of alphanumeric characters, '-', '_', and must start and end with an alphanumeric character (e.g. 'MyName',  or 'my-name',  or 'my_name', regex used for validation is '%s')", ResultNameFormat))
 	}
+	// Array and Object is alpha feature
+	if tr.Type == ResultsTypeArray || tr.Type == ResultsTypeObject {
+		errs := validateObjectResult(tr)
+		errs = errs.Also(version.ValidateEnabledAPIFields(ctx, "results type", config.AlphaAPIFields))
+		return errs
+	}
 
-	switch {
-	case tr.Type == ResultsTypeObject:
-		errs = errs.Also(validateObjectResult(tr))
-	case tr.Type == ResultsTypeArray:
 	// Resources created before the result. Type was introduced may not have Type set
 	// and should be considered valid
-	case tr.Type == "":
-	// By default, the result type is string
-	case tr.Type != ResultsTypeString:
-		errs = errs.Also(apis.ErrInvalidValue(tr.Type, "type", "type must be string"))
+	if tr.Type == "" {
+		return nil
 	}
-	return errs.Also(tr.validateValue(ctx))
+
+	// By default the result type is string
+	if tr.Type != ResultsTypeString {
+		return apis.ErrInvalidValue(tr.Type, "type", fmt.Sprintf("type must be string"))
+	}
+
+	return nil
 }
 
 // validateObjectResult validates the object result and check if the Properties is missing
 // for Properties values it will check if the type is string.
 func validateObjectResult(tr TaskResult) (errs *apis.FieldError) {
 	if ParamType(tr.Type) == ParamTypeObject && tr.Properties == nil {
-		return apis.ErrMissingField(tr.Name + ".properties")
+		return apis.ErrMissingField(fmt.Sprintf("%s.properties", tr.Name))
 	}
 
 	invalidKeys := []string{}
@@ -59,50 +65,8 @@ func validateObjectResult(tr TaskResult) (errs *apis.FieldError) {
 	if len(invalidKeys) != 0 {
 		return &apis.FieldError{
 			Message: fmt.Sprintf("The value type specified for these keys %v is invalid, the type must be string", invalidKeys),
-			Paths:   []string{tr.Name + ".properties"},
+			Paths:   []string{fmt.Sprintf("%s.properties", tr.Name)},
 		}
 	}
 	return nil
-}
-
-// validateValue validates the value of the TaskResult.
-// It requires the value is of type string
-// and format $(steps.<stepName>.results.<resultName>)
-func (tr TaskResult) validateValue(ctx context.Context) (errs *apis.FieldError) {
-	if tr.Value == nil {
-		return nil
-	}
-	if tr.Value.Type != ParamTypeString {
-		return &apis.FieldError{
-			Message: fmt.Sprintf(
-				"Invalid Type. Wanted string but got: \"%v\"", tr.Value.Type),
-			Paths: []string{
-				tr.Name + ".type",
-			},
-		}
-	}
-	if tr.Value.StringVal != "" {
-		stepName, resultName, err := v1.ExtractStepResultName(tr.Value.StringVal)
-		if err != nil {
-			return &apis.FieldError{
-				Message: err.Error(),
-				Paths:   []string{tr.Name + ".value"},
-			}
-		}
-		if e := validation.IsDNS1123Label(stepName); len(e) > 0 {
-			errs = errs.Also(&apis.FieldError{
-				Message: fmt.Sprintf("invalid extracted step name %q", stepName),
-				Paths:   []string{tr.Name + ".value"},
-				Details: "stepName in $(steps.<stepName>.results.<resultName>) must be a valid DNS Label, For more info refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
-			})
-		}
-		if !resultNameFormatRegex.MatchString(resultName) {
-			errs = errs.Also(&apis.FieldError{
-				Message: fmt.Sprintf("invalid extracted result name %q", resultName),
-				Paths:   []string{tr.Name + ".value"},
-				Details: fmt.Sprintf("resultName in $(steps.<stepName>.results.<resultName>) must consist of alphanumeric characters, '-', '_', and must start and end with an alphanumeric character (e.g. 'MyName',  or 'my-name',  or 'my_name', regex used for validation is '%s')", ResultNameFormat),
-			})
-		}
-	}
-	return errs
 }

@@ -34,23 +34,9 @@ const (
 
 // Default log level is Error.
 var (
-	level      = Error
-	lock       sync.Mutex
-	currLogger Logger = &logger{}
+	level = Error
+	lock  sync.Mutex
 )
-
-type Logger interface {
-	Infof(format string, args ...interface{})
-	Debugf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
-}
-
-// SetLogger changes the default logger. This must be called very first,
-// before interacting with rest of the martian package. Changing it at
-// runtime is not supported.
-func SetLogger(l Logger) {
-	currLogger = l
-}
 
 // SetLevel sets the global log level.
 func SetLevel(l int) {
@@ -62,22 +48,6 @@ func SetLevel(l int) {
 
 // Infof logs an info message.
 func Infof(format string, args ...interface{}) {
-	currLogger.Infof(format, args...)
-}
-
-// Debugf logs a debug message.
-func Debugf(format string, args ...interface{}) {
-	currLogger.Debugf(format, args...)
-}
-
-// Errorf logs an error message.
-func Errorf(format string, args ...interface{}) {
-	currLogger.Errorf(format, args...)
-}
-
-type logger struct{}
-
-func (l *logger) Infof(format string, args ...interface{}) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -93,7 +63,8 @@ func (l *logger) Infof(format string, args ...interface{}) {
 	log.Println(msg)
 }
 
-func (l *logger) Debugf(format string, args ...interface{}) {
+// Debugf logs a debug message.
+func Debugf(format string, args ...interface{}) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -109,7 +80,8 @@ func (l *logger) Debugf(format string, args ...interface{}) {
 	log.Println(msg)
 }
 
-func (l *logger) Errorf(format string, args ...interface{}) {
+// Errorf logs an error message.
+func Errorf(format string, args ...interface{}) {
 	lock.Lock()
 	defer lock.Unlock()
 

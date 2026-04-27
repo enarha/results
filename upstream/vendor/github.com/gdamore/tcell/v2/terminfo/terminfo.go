@@ -240,14 +240,15 @@ const (
 type stack []interface{}
 
 func (st stack) Push(v interface{}) stack {
-	if b, ok := v.(bool); ok {
-		if b {
-			return append(st, 1)
-		} else {
-			return append(st, 0)
-		}
-	}
 	return append(st, v)
+}
+
+func (st stack) Pop() (interface{}, stack) {
+	if len(st) > 0 {
+		e := st[len(st)-1]
+		return e, st[:len(st)-1]
+	}
+	return 0, st
 }
 
 func (st stack) PopString() (string, stack) {
@@ -257,6 +258,8 @@ func (st stack) PopString() (string, stack) {
 		switch v := e.(type) {
 		case int:
 			s = strconv.Itoa(v)
+		case bool:
+			s = strconv.FormatBool(v)
 		case string:
 			s = v
 		}
@@ -272,6 +275,12 @@ func (st stack) PopInt() (int, stack) {
 		switch v := e.(type) {
 		case int:
 			i = v
+		case bool:
+			if v {
+				i = 1
+			} else {
+				i = 0
+			}
 		case string:
 			i, _ = strconv.Atoi(v)
 		}
@@ -280,18 +289,42 @@ func (st stack) PopInt() (int, stack) {
 	return 0, st
 }
 
+func (st stack) PopBool() (bool, stack) {
+	var b bool
+	if len(st) > 0 {
+		e := st[len(st)-1]
+		switch v := e.(type) {
+		case int:
+			b = v != 0
+		case bool:
+			b = v
+		case string:
+			b = v != "" && v != "false"
+		}
+		return b, st[:len(st)-1]
+	}
+	return false, st
+}
+
 // static vars
 var svars [26]string
 
+// paramsBuffer handles some persistent state for TParam.  Technically we
+// could probably dispense with this, but caching buffer arrays gives us
+// a nice little performance boost.  Furthermore, we know that TParam is
+// rarely (never?) called re-entrantly, so we can just reuse the same
+// buffers, making it thread-safe by stashing a lock.
 type paramsBuffer struct {
 	out bytes.Buffer
 	buf bytes.Buffer
+	lk  sync.Mutex
 }
 
 // Start initializes the params buffer with the initial string data.
 // It also locks the paramsBuffer.  The caller must call End() when
 // finished.
 func (pb *paramsBuffer) Start(s string) {
+	pb.lk.Lock()
 	pb.out.Reset()
 	pb.buf.Reset()
 	pb.buf.WriteString(s)
@@ -300,6 +333,7 @@ func (pb *paramsBuffer) Start(s string) {
 // End returns the final output from TParam, but it also releases the lock.
 func (pb *paramsBuffer) End() string {
 	s := pb.out.String()
+	pb.lk.Unlock()
 	return s
 }
 
@@ -318,16 +352,18 @@ func (pb *paramsBuffer) PutString(s string) {
 	pb.out.WriteString(s)
 }
 
+var pb = &paramsBuffer{}
+
 // TParm takes a terminfo parameterized string, such as setaf or cup, and
 // evaluates the string, and returns the result with the parameter
 // applied.
 func (t *Terminfo) TParm(s string, p ...interface{}) string {
 	var stk stack
-	var a string
+	var a, b string
 	var ai, bi int
+	var ab bool
 	var dvars [26]string
 	var params [9]interface{}
-	var pb = &paramsBuffer{}
 
 	pb.Start(s)
 
@@ -337,13 +373,7 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 		params[i] = p[i]
 	}
 
-	const (
-		emit = iota
-		toEnd
-		toElse
-	)
-
-	skip := emit
+	nest := 0
 
 	for {
 
@@ -353,9 +383,7 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 		}
 
 		if ch != '%' {
-			if skip == emit {
-				pb.PutCh(ch)
-			}
+			pb.PutCh(ch)
 			continue
 		}
 
@@ -363,17 +391,6 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 		if err != nil {
 			// XXX Error
 			break
-		}
-		if skip == toEnd {
-			if ch == ';' {
-				skip = emit
-			}
-			continue
-		} else if skip == toElse {
-			if ch == 'e' || ch == ';' {
-				skip = emit
-			}
-			continue
 		}
 
 		switch ch {
@@ -388,23 +405,18 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 				params[1] = i + 1
 			}
 
-		case 's':
-			// NB: 's', 'c', and 'd' below are special cased for
+		case 'c', 's':
+			// NB: these, and 'd' below are special cased for
 			// efficiency.  They could be handled by the richer
 			// format support below, less efficiently.
 			a, stk = stk.PopString()
 			pb.PutString(a)
 
-		case 'c':
-			// Integer as special character.
-			ai, stk = stk.PopInt()
-			pb.PutCh(byte(ai))
-
 		case 'd':
 			ai, stk = stk.PopInt()
 			pb.PutString(strconv.Itoa(ai))
 
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', 'X', 'o', ':':
+		case '0', '1', '2', '3', '4', 'x', 'X', 'o', ':':
 			// This is pretty suboptimal, but this is rarely used.
 			// None of the mainstream terminals use any of this,
 			// and it would surprise me if this code is ever
@@ -426,12 +438,9 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 			case 'd', 'x', 'X', 'o':
 				ai, stk = stk.PopInt()
 				pb.PutString(fmt.Sprintf(f, ai))
-			case 's':
+			case 'c', 's':
 				a, stk = stk.PopString()
 				pb.PutString(fmt.Sprintf(f, a))
-			case 'c':
-				ai, stk = stk.PopInt()
-				pb.PutString(fmt.Sprintf(f, ai))
 			}
 
 		case 'p': // push parameter
@@ -459,10 +468,10 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 				stk = stk.Push(dvars[int(ch-'a')])
 			}
 
-		case '\'': // push(char) - the integer value of it
+		case '\'': // push(char)
 			ch, _ = pb.NextCh()
 			_, _ = pb.NextCh() // must be ' but we don't check
-			stk = stk.Push(int(ch))
+			stk = stk.Push(string(ch))
 
 		case '{': // push(int)
 			ai = 0
@@ -533,12 +542,12 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 
 		case '!': // logical NOT
 			ai, stk = stk.PopInt()
-			stk = stk.Push(ai == 0)
+			stk = stk.Push(ai != 0)
 
-		case '=': // numeric compare
-			bi, stk = stk.PopInt()
-			ai, stk = stk.PopInt()
-			stk = stk.Push(ai == bi)
+		case '=': // numeric compare or string compare
+			b, stk = stk.PopString()
+			a, stk = stk.PopString()
+			stk = stk.Push(a == b)
 
 		case '>': // greater than, numeric
 			bi, stk = stk.PopInt()
@@ -552,20 +561,68 @@ func (t *Terminfo) TParm(s string, p ...interface{}) string {
 
 		case '?': // start conditional
 
-		case ';':
-			skip = emit
-
 		case 't':
-			ai, stk = stk.PopInt()
-			if ai == 0 {
-				skip = toElse
+			ab, stk = stk.PopBool()
+			if ab {
+				// just keep going
+				break
+			}
+			nest = 0
+		ifloop:
+			// this loop consumes everything until we hit our else,
+			// or the end of the conditional
+			for {
+				ch, err = pb.NextCh()
+				if err != nil {
+					break
+				}
+				if ch != '%' {
+					continue
+				}
+				ch, _ = pb.NextCh()
+				switch ch {
+				case ';':
+					if nest == 0 {
+						break ifloop
+					}
+					nest--
+				case '?':
+					nest++
+				case 'e':
+					if nest == 0 {
+						break ifloop
+					}
+				}
 			}
 
 		case 'e':
-			skip = toEnd
+			// if we got here, it means we didn't use the else
+			// in the 't' case above, and we should skip until
+			// the end of the conditional
+			nest = 0
+		elloop:
+			for {
+				ch, err = pb.NextCh()
+				if err != nil {
+					break
+				}
+				if ch != '%' {
+					continue
+				}
+				ch, _ = pb.NextCh()
+				switch ch {
+				case ';':
+					if nest == 0 {
+						break elloop
+					}
+					nest--
+				case '?':
+					nest++
+				}
+			}
 
-		default:
-			pb.PutString("%" + string(ch))
+		case ';': // endif
+
 		}
 	}
 

@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
@@ -79,11 +79,9 @@ type ResolutionRequestStatusFields struct {
 	// of the requested resource in-lined into the ResolutionRequest
 	// object.
 	Data string `json:"data"`
-	// RefSource is the source reference of the remote data that records where the remote
+	// Source is the source reference of the remote data that records where the remote
 	// file came from including the url, digest and the entrypoint.
-	// +kubebuilder:pruning:PreserveUnknownFields
-	// +kubebuilder:validation:Schemaless
-	RefSource *pipelinev1.RefSource `json:"refSource"`
+	Source *pipelinev1beta1.ConfigSource `json:"source"`
 }
 
 // GetStatus implements KRShaped.

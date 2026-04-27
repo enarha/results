@@ -1,4 +1,4 @@
-// Copyright 2025 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -28,6 +28,7 @@ import (
 
 	credentialspb "cloud.google.com/go/iam/credentials/apiv1/credentialspb"
 	gax "github.com/googleapis/gax-go/v2"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
@@ -50,13 +51,10 @@ type IamCredentialsCallOptions struct {
 func defaultIamCredentialsGRPCClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("iamcredentials.googleapis.com:443"),
-		internaloption.WithDefaultEndpointTemplate("iamcredentials.UNIVERSE_DOMAIN:443"),
 		internaloption.WithDefaultMTLSEndpoint("iamcredentials.mtls.googleapis.com:443"),
-		internaloption.WithDefaultUniverseDomain("googleapis.com"),
 		internaloption.WithDefaultAudience("https://iamcredentials.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
 		internaloption.EnableJwtWithScope(),
-		internaloption.EnableNewAuthLibrary(),
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(math.MaxInt32))),
 	}
@@ -261,8 +259,6 @@ type iamCredentialsGRPCClient struct {
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogHeaders []string
-
-	logger *slog.Logger
 }
 
 // NewIamCredentialsClient creates a new iam credentials client based on gRPC.
@@ -297,7 +293,6 @@ func NewIamCredentialsClient(ctx context.Context, opts ...option.ClientOption) (
 		connPool:             connPool,
 		iamCredentialsClient: credentialspb.NewIAMCredentialsClient(connPool),
 		CallOptions:          &client.CallOptions,
-		logger:               internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
 
@@ -319,10 +314,8 @@ func (c *iamCredentialsGRPCClient) Connection() *grpc.ClientConn {
 // use by Google-written clients.
 func (c *iamCredentialsGRPCClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
-	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version, "pb", protoVersion)
-	c.xGoogHeaders = []string{
-		"x-goog-api-client", gax.XGoogHeader(kv...),
-	}
+	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version)
+	c.xGoogHeaders = []string{"x-goog-api-client", gax.XGoogHeader(kv...)}
 }
 
 // Close closes the connection to the API service. The user should invoke this when
@@ -344,8 +337,6 @@ type iamCredentialsRESTClient struct {
 
 	// Points back to the CallOptions field of the containing IamCredentialsClient
 	CallOptions **IamCredentialsCallOptions
-
-	logger *slog.Logger
 }
 
 // NewIamCredentialsRESTClient creates a new iam credentials rest client.
@@ -371,7 +362,6 @@ func NewIamCredentialsRESTClient(ctx context.Context, opts ...option.ClientOptio
 		endpoint:    endpoint,
 		httpClient:  httpClient,
 		CallOptions: &callOpts,
-		logger:      internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
 
@@ -381,12 +371,9 @@ func NewIamCredentialsRESTClient(ctx context.Context, opts ...option.ClientOptio
 func defaultIamCredentialsRESTClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("https://iamcredentials.googleapis.com"),
-		internaloption.WithDefaultEndpointTemplate("https://iamcredentials.UNIVERSE_DOMAIN"),
 		internaloption.WithDefaultMTLSEndpoint("https://iamcredentials.mtls.googleapis.com"),
-		internaloption.WithDefaultUniverseDomain("googleapis.com"),
 		internaloption.WithDefaultAudience("https://iamcredentials.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
-		internaloption.EnableNewAuthLibrary(),
 	}
 }
 
@@ -395,10 +382,8 @@ func defaultIamCredentialsRESTClientOptions() []option.ClientOption {
 // use by Google-written clients.
 func (c *iamCredentialsRESTClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
-	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "rest", "UNKNOWN", "pb", protoVersion)
-	c.xGoogHeaders = []string{
-		"x-goog-api-client", gax.XGoogHeader(kv...),
-	}
+	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "rest", "UNKNOWN")
+	c.xGoogHeaders = []string{"x-goog-api-client", gax.XGoogHeader(kv...)}
 }
 
 // Close closes the connection to the API service. The user should invoke this when
@@ -424,7 +409,7 @@ func (c *iamCredentialsGRPCClient) GenerateAccessToken(ctx context.Context, req 
 	var resp *credentialspb.GenerateAccessTokenResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = executeRPC(ctx, c.iamCredentialsClient.GenerateAccessToken, req, settings.GRPC, c.logger, "GenerateAccessToken")
+		resp, err = c.iamCredentialsClient.GenerateAccessToken(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -442,7 +427,7 @@ func (c *iamCredentialsGRPCClient) GenerateIdToken(ctx context.Context, req *cre
 	var resp *credentialspb.GenerateIdTokenResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = executeRPC(ctx, c.iamCredentialsClient.GenerateIdToken, req, settings.GRPC, c.logger, "GenerateIdToken")
+		resp, err = c.iamCredentialsClient.GenerateIdToken(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -460,7 +445,7 @@ func (c *iamCredentialsGRPCClient) SignBlob(ctx context.Context, req *credential
 	var resp *credentialspb.SignBlobResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = executeRPC(ctx, c.iamCredentialsClient.SignBlob, req, settings.GRPC, c.logger, "SignBlob")
+		resp, err = c.iamCredentialsClient.SignBlob(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -478,7 +463,7 @@ func (c *iamCredentialsGRPCClient) SignJwt(ctx context.Context, req *credentials
 	var resp *credentialspb.SignJwtResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = executeRPC(ctx, c.iamCredentialsClient.SignJwt, req, settings.GRPC, c.logger, "SignJwt")
+		resp, err = c.iamCredentialsClient.SignJwt(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -526,7 +511,17 @@ func (c *iamCredentialsRESTClient) GenerateAccessToken(ctx context.Context, req 
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "GenerateAccessToken")
+		httpRsp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			return err
+		}
+		defer httpRsp.Body.Close()
+
+		if err = googleapi.CheckResponse(httpRsp); err != nil {
+			return err
+		}
+
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
@@ -582,7 +577,17 @@ func (c *iamCredentialsRESTClient) GenerateIdToken(ctx context.Context, req *cre
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "GenerateIdToken")
+		httpRsp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			return err
+		}
+		defer httpRsp.Body.Close()
+
+		if err = googleapi.CheckResponse(httpRsp); err != nil {
+			return err
+		}
+
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
@@ -638,7 +643,17 @@ func (c *iamCredentialsRESTClient) SignBlob(ctx context.Context, req *credential
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "SignBlob")
+		httpRsp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			return err
+		}
+		defer httpRsp.Body.Close()
+
+		if err = googleapi.CheckResponse(httpRsp); err != nil {
+			return err
+		}
+
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}
@@ -694,7 +709,17 @@ func (c *iamCredentialsRESTClient) SignJwt(ctx context.Context, req *credentials
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "SignJwt")
+		httpRsp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			return err
+		}
+		defer httpRsp.Body.Close()
+
+		if err = googleapi.CheckResponse(httpRsp); err != nil {
+			return err
+		}
+
+		buf, err := io.ReadAll(httpRsp.Body)
 		if err != nil {
 			return err
 		}

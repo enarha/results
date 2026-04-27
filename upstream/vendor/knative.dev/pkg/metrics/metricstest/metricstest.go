@@ -119,6 +119,7 @@ func CheckDistributionCount(t ti, name string, wantTags map[string]string, expec
 	} else if s.Count != expectedCount {
 		t.Error("reporter count wrong", "metric", name, "got", s.Count, "want", expectedCount)
 	}
+
 }
 
 // GetLastValueData returns the last value for the given metric, verifying tags.

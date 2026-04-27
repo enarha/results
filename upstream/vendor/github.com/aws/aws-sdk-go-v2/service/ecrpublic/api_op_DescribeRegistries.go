@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -29,24 +30,22 @@ func (c *Client) DescribeRegistries(ctx context.Context, params *DescribeRegistr
 
 type DescribeRegistriesInput struct {
 
-	// The maximum number of repository results that's returned by DescribeRegistries
-	// in paginated output. When this parameter is used, DescribeRegistries only
-	// returns maxResults results in a single page along with a nextToken response
-	// element. The remaining results of the initial request can be seen by sending
-	// another DescribeRegistries request with the returned nextToken value. This
-	// value can be between 1 and 1000. If this parameter isn't used, then
-	// DescribeRegistries returns up to 100 results and a nextToken value, if
-	// applicable.
+	// The maximum number of repository results returned by DescribeRegistries in
+	// paginated output. When this parameter is used, DescribeRegistries only returns
+	// maxResults results in a single page along with a nextToken response element. The
+	// remaining results of the initial request can be seen by sending another
+	// DescribeRegistries request with the returned nextToken value. This value can be
+	// between 1 and 1000. If this parameter is not used, then DescribeRegistries
+	// returns up to 100 results and a nextToken value, if applicable.
 	MaxResults *int32
 
-	// The nextToken value that's returned from a previous paginated DescribeRegistries
+	// The nextToken value returned from a previous paginated DescribeRegistries
 	// request where maxResults was used and the results exceeded the value of that
 	// parameter. Pagination continues from the end of the previous results that
-	// returned the nextToken value. If there are no more results to return, this
-	// value is null .
-	//
-	// This token should be treated as an opaque identifier that is only used to
-	// retrieve the next items in a list and not for other programmatic purposes.
+	// returned the nextToken value. This value is null when there are no more results
+	// to return. This token should be treated as an opaque identifier that is only
+	// used to retrieve the next items in a list and not for other programmatic
+	// purposes.
 	NextToken *string
 
 	noSmithyDocumentSerde
@@ -54,15 +53,15 @@ type DescribeRegistriesInput struct {
 
 type DescribeRegistriesOutput struct {
 
-	// An object that contains the details for a public registry.
+	// An object containing the details for a public registry.
 	//
 	// This member is required.
 	Registries []types.Registry
 
-	// The nextToken value to include in a future DescribeRepositories request. If the
-	// results of a DescribeRepositories request exceed maxResults , you can use this
-	// value to retrieve the next page of results. If there are no more results, this
-	// value is null .
+	// The nextToken value to include in a future DescribeRepositories request. When
+	// the results of a DescribeRepositories request exceed maxResults, this value can
+	// be used to retrieve the next page of results. This value is null when there are
+	// no more results to return.
 	NextToken *string
 
 	// Metadata pertaining to the operation's result.
@@ -72,9 +71,6 @@ type DescribeRegistriesOutput struct {
 }
 
 func (c *Client) addOperationDescribeRegistriesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpDescribeRegistries{}, middleware.After)
 	if err != nil {
 		return err
@@ -83,41 +79,34 @@ func (c *Client) addOperationDescribeRegistriesMiddlewares(stack *middleware.Sta
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeRegistries"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
-
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addClientRequestID(stack); err != nil {
+	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addComputeContentLength(stack); err != nil {
+	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addComputePayloadSHA256(stack); err != nil {
+	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetryMiddlewares(stack, options); err != nil {
 		return err
 	}
-	if err = addRawResponseToMetadata(stack); err != nil {
+	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
+	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack, options); err != nil {
+	if err = addClientUserAgent(stack); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -126,19 +115,7 @@ func (c *Client) addOperationDescribeRegistriesMiddlewares(stack *middleware.Sta
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeRegistries(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -150,35 +127,27 @@ func (c *Client) addOperationDescribeRegistriesMiddlewares(stack *middleware.Sta
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
-		return err
-	}
 	return nil
 }
+
+// DescribeRegistriesAPIClient is a client that implements the DescribeRegistries
+// operation.
+type DescribeRegistriesAPIClient interface {
+	DescribeRegistries(context.Context, *DescribeRegistriesInput, ...func(*Options)) (*DescribeRegistriesOutput, error)
+}
+
+var _ DescribeRegistriesAPIClient = (*Client)(nil)
 
 // DescribeRegistriesPaginatorOptions is the paginator options for
 // DescribeRegistries
 type DescribeRegistriesPaginatorOptions struct {
-	// The maximum number of repository results that's returned by DescribeRegistries
-	// in paginated output. When this parameter is used, DescribeRegistries only
-	// returns maxResults results in a single page along with a nextToken response
-	// element. The remaining results of the initial request can be seen by sending
-	// another DescribeRegistries request with the returned nextToken value. This
-	// value can be between 1 and 1000. If this parameter isn't used, then
-	// DescribeRegistries returns up to 100 results and a nextToken value, if
-	// applicable.
+	// The maximum number of repository results returned by DescribeRegistries in
+	// paginated output. When this parameter is used, DescribeRegistries only returns
+	// maxResults results in a single page along with a nextToken response element. The
+	// remaining results of the initial request can be seen by sending another
+	// DescribeRegistries request with the returned nextToken value. This value can be
+	// between 1 and 1000. If this parameter is not used, then DescribeRegistries
+	// returns up to 100 results and a nextToken value, if applicable.
 	Limit int32
 
 	// Set to true if pagination should stop if the service returns a pagination token
@@ -239,9 +208,6 @@ func (p *DescribeRegistriesPaginator) NextPage(ctx context.Context, optFns ...fu
 	}
 	params.MaxResults = limit
 
-	optFns = append([]func(*Options){
-		addIsPaginatorUserAgent,
-	}, optFns...)
 	result, err := p.client.DescribeRegistries(ctx, &params, optFns...)
 	if err != nil {
 		return nil, err
@@ -261,18 +227,11 @@ func (p *DescribeRegistriesPaginator) NextPage(ctx context.Context, optFns ...fu
 	return result, nil
 }
 
-// DescribeRegistriesAPIClient is a client that implements the DescribeRegistries
-// operation.
-type DescribeRegistriesAPIClient interface {
-	DescribeRegistries(context.Context, *DescribeRegistriesInput, ...func(*Options)) (*DescribeRegistriesOutput, error)
-}
-
-var _ DescribeRegistriesAPIClient = (*Client)(nil)
-
 func newServiceMetadataMiddleware_opDescribeRegistries(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
+		SigningName:   "ecr-public",
 		OperationName: "DescribeRegistries",
 	}
 }

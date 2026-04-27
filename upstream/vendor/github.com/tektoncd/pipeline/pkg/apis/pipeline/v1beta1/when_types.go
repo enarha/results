@@ -27,21 +27,15 @@ import (
 // to determine whether the Task should be executed or skipped
 type WhenExpression struct {
 	// Input is the string for guard checking which can be a static input or an output from a parent Task
-	Input string `json:"input,omitempty"`
+	Input string `json:"input"`
 
 	// Operator that represents an Input's relationship to the values
-	Operator selection.Operator `json:"operator,omitempty"`
+	Operator selection.Operator `json:"operator"`
 
 	// Values is an array of strings, which is compared against the input, for guard checking
 	// It must be non-empty
 	// +listType=atomic
-	Values []string `json:"values,omitempty"`
-
-	// CEL is a string of Common Language Expression, which can be used to conditionally execute
-	// the task based on the result of the expression evaluation
-	// More info about CEL syntax: https://github.com/google/cel-spec/blob/master/doc/langdef.md
-	// +optional
-	CEL string `json:"cel,omitempty"`
+	Values []string `json:"values"`
 }
 
 func (we *WhenExpression) isInputInValues() bool {
@@ -63,7 +57,6 @@ func (we *WhenExpression) isTrue() bool {
 
 func (we *WhenExpression) applyReplacements(replacements map[string]string, arrayReplacements map[string][]string) WhenExpression {
 	replacedInput := substitution.ApplyReplacements(we.Input, replacements)
-	replacedCEL := substitution.ApplyReplacements(we.CEL, replacements)
 
 	var replacedValues []string
 	for _, val := range we.Values {
@@ -80,14 +73,13 @@ func (we *WhenExpression) applyReplacements(replacements map[string]string, arra
 		}
 	}
 
-	return WhenExpression{Input: replacedInput, Operator: we.Operator, Values: replacedValues, CEL: replacedCEL}
+	return WhenExpression{Input: replacedInput, Operator: we.Operator, Values: replacedValues}
 }
 
 // GetVarSubstitutionExpressions extracts all the values between "$(" and ")" in a When Expression
 func (we *WhenExpression) GetVarSubstitutionExpressions() ([]string, bool) {
 	var allExpressions []string
 	allExpressions = append(allExpressions, validateString(we.Input)...)
-	allExpressions = append(allExpressions, validateString(we.CEL)...)
 	for _, value := range we.Values {
 		allExpressions = append(allExpressions, validateString(value)...)
 	}
@@ -98,25 +90,21 @@ func (we *WhenExpression) GetVarSubstitutionExpressions() ([]string, bool) {
 // All of them need to evaluate to True for a guarded Task to be executed.
 type WhenExpressions []WhenExpression
 
-type StepWhenExpressions = WhenExpressions
-
 // AllowsExecution evaluates an Input's relationship to an array of Values, based on the Operator,
 // to determine whether all the When Expressions are True. If they are all True, the guarded Task is
 // executed, otherwise it is skipped.
-// If CEL expression exists, AllowsExecution will get the evaluated results from evaluatedCEL and determine
-// if the Task should be skipped.
-func (wes WhenExpressions) AllowsExecution(evaluatedCEL map[string]bool) bool {
+func (wes WhenExpressions) AllowsExecution() bool {
 	for _, we := range wes {
-		if !we.isTrue() || (we.CEL != "" && !evaluatedCEL[we.CEL]) {
+		if !we.isTrue() {
 			return false
 		}
 	}
 	return true
 }
 
-// ReplaceVariables interpolates variables, such as Parameters and Results, in
+// ReplaceWhenExpressionsVariables interpolates variables, such as Parameters and Results, in
 // the Input and Values.
-func (wes WhenExpressions) ReplaceVariables(replacements map[string]string, arrayReplacements map[string][]string) WhenExpressions {
+func (wes WhenExpressions) ReplaceWhenExpressionsVariables(replacements map[string]string, arrayReplacements map[string][]string) WhenExpressions {
 	replaced := wes
 	for i := range wes {
 		replaced[i] = wes[i].applyReplacements(replacements, arrayReplacements)

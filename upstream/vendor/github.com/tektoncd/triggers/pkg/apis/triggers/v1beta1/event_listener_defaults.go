@@ -47,13 +47,5 @@ func (el *EventListener) SetDefaults(ctx context.Context) {
 				}
 			}
 		}
-
-		for _, tg := range el.Spec.TriggerGroups {
-			for _, ti := range tg.Interceptors {
-				if ti != nil {
-					ti.defaultInterceptorKind()
-				}
-			}
-		}
 	}
 }

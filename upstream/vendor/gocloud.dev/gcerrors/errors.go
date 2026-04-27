@@ -18,9 +18,9 @@ package gcerrors
 
 import (
 	"context"
-	"errors"
 
 	"gocloud.dev/internal/gcerr"
+	"golang.org/x/xerrors"
 )
 
 // An ErrorCode describes the error's category. Programs should act upon an error's
@@ -78,13 +78,13 @@ func Code(err error) ErrorCode {
 		return OK
 	}
 	var e *gcerr.Error
-	if errors.As(err, &e) {
+	if xerrors.As(err, &e) {
 		return e.Code
 	}
-	if errors.Is(err, context.Canceled) {
+	if xerrors.Is(err, context.Canceled) {
 		return Canceled
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if xerrors.Is(err, context.DeadlineExceeded) {
 		return DeadlineExceeded
 	}
 	return Unknown

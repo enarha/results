@@ -1,5 +1,3 @@
-//go:build !disable_tls
-
 /*
 Copyright 2019 The Tekton Authors
 
@@ -23,7 +21,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/tektoncd/pipeline/pkg/result"
+	v1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"go.uber.org/zap"
 )
 
@@ -31,34 +29,31 @@ import (
 //
 // If more than one item has the same key, only the latest is returned. Items
 // are sorted by their key.
-func ParseMessage(logger *zap.SugaredLogger, msg string) ([]result.RunResult, error) {
+func ParseMessage(logger *zap.SugaredLogger, msg string) ([]v1beta1.PipelineResourceResult, error) {
 	if msg == "" {
 		return nil, nil
 	}
 
-	var r []result.RunResult
+	var r []v1beta1.PipelineResourceResult
 	if err := json.Unmarshal([]byte(msg), &r); err != nil {
-		return nil, fmt.Errorf("parsing message json: %w, msg: %s", err, msg)
+		return nil, fmt.Errorf("parsing message json: %v", err)
 	}
 
-	writeIndex := 0
-	for _, rr := range r {
-		if rr != (result.RunResult{}) {
+	for i, rr := range r {
+		if rr == (v1beta1.PipelineResourceResult{}) {
 			// Erase incorrect result
-			r[writeIndex] = rr
-			writeIndex++
-		} else {
+			r[i] = r[len(r)-1]
+			r = r[:len(r)-1]
 			logger.Errorf("termination message contains non taskrun or pipelineresource result keys")
 		}
 	}
-	r = r[:writeIndex]
 
 	// Remove duplicates (last one wins) and sort by key.
-	m := map[string]result.RunResult{}
+	m := map[string]v1beta1.PipelineResourceResult{}
 	for _, rr := range r {
 		m[rr.Key] = rr
 	}
-	r2 := make([]result.RunResult, 0, len(m))
+	r2 := make([]v1beta1.PipelineResourceResult, 0, len(m))
 	for _, v := range m {
 		r2 = append(r2, v)
 	}

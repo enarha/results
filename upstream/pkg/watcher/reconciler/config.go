@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package reconciler provides the core reconciliation logic for the watcher.
 package reconciler
 
 import (
@@ -45,37 +44,6 @@ type Config struct {
 
 	// UpdateLogTimeout is the time we provide for storing logs before aborting
 	UpdateLogTimeout *time.Duration
-
-	// DynamicReconcileTimeout is the time we provide for the dynamic reconciler to process an event
-	DynamicReconcileTimeout *time.Duration
-
-	// Whether to Store Events related to Taskrun and Pipelineruns
-	StoreEvent bool
-
-	// StoreDeadline is the time we provide for the PipelineRun and TaskRun resources
-	// to be stored before aborting and clearing the finalizer in case of delete event
-	StoreDeadline *time.Duration
-
-	// FinalizerRequeueInterval is the duration after which finalizer reconciler
-	// is scheduled to run for processing Runs not yet stored.
-	FinalizerRequeueInterval time.Duration
-
-	// ForwardBuffer is the time we provide for the TaskRun Logs to finish streaming
-	// by a forwarder. Since there's no way to check if log has been streamed, we
-	// always wait for this much amount of duration
-	ForwardBuffer *time.Duration
-
-	// Collect logs with timestamps
-	LogsTimestamps bool
-
-	// SummaryLabels are labels which should be part of the summary of the result
-	SummaryLabels string
-
-	// SummaryAnnotations are annotations which should be part of the summary of the result
-	SummaryAnnotations string
-
-	// DisableStoringIncompleteRuns disables the collection of incomplete Runs data
-	DisableStoringIncompleteRuns bool
 }
 
 // GetDisableAnnotationUpdate returns whether annotation updates should be

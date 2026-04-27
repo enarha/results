@@ -10,7 +10,7 @@ import (
 
 	"github.com/tektoncd/results/pkg/api/server/config"
 
-	"github.com/tektoncd/results/pkg/apis/v1alpha3"
+	"github.com/tektoncd/results/pkg/apis/v1alpha2"
 )
 
 type fileStream struct {
@@ -20,7 +20,7 @@ type fileStream struct {
 }
 
 // NewFileStream returns a LogStreamer that streams directly from a log file on local disk.
-func NewFileStream(ctx context.Context, log *v1alpha3.Log, config *config.Config) (Stream, error) {
+func NewFileStream(ctx context.Context, log *v1alpha2.Log, config *config.Config) (Stream, error) {
 	if log.Status.Path == "" {
 		filePath, err := FilePath(log)
 		if err != nil {
@@ -42,7 +42,7 @@ func NewFileStream(ctx context.Context, log *v1alpha3.Log, config *config.Config
 }
 
 func (*fileStream) Type() string {
-	return string(v1alpha3.FileLogType)
+	return string(v1alpha2.FileLogType)
 }
 
 // WriteTo reads the contents of the TaskRun log file and writes them to the provided writer, such
@@ -73,15 +73,14 @@ func (fs *fileStream) WriteTo(w io.Writer) (n int64, err error) {
 func (fs *fileStream) ReadFrom(r io.Reader) (n int64, err error) {
 	// Ensure that the directories in the path already exist
 	dir := filepath.Dir(fs.path)
-	err = os.MkdirAll(dir, 0750)
+	err = os.MkdirAll(dir, os.ModePerm)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create directory %s, %w", dir, err)
 	}
 	// Open the file with Append + Create + WriteOnly modes.
 	// This ensures the file is created if it does not exist.
 	// If the file does exist, data is appended instead of overwritten/truncated
-	// 0600 is safe since the same process reads and writes these log files
-	file, err := os.OpenFile(fs.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	file, err := os.OpenFile(fs.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file %s: %w", fs.path, err)
 	}

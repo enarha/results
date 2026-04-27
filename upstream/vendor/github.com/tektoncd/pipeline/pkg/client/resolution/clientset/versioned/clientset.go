@@ -19,8 +19,8 @@ limitations under the License.
 package versioned
 
 import (
-	fmt "fmt"
-	http "net/http"
+	"fmt"
+	"net/http"
 
 	resolutionv1alpha1 "github.com/tektoncd/pipeline/pkg/client/resolution/clientset/versioned/typed/resolution/v1alpha1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/client/resolution/clientset/versioned/typed/resolution/v1beta1"
@@ -35,7 +35,8 @@ type Interface interface {
 	ResolutionV1beta1() resolutionv1beta1.ResolutionV1beta1Interface
 }
 
-// Clientset contains the clients for groups.
+// Clientset contains the clients for groups. Each group has exactly one
+// version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
 	resolutionV1alpha1 *resolutionv1alpha1.ResolutionV1alpha1Client

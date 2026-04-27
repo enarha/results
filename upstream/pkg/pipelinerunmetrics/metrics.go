@@ -1,4 +1,3 @@
-// Package pipelinerunmetrics provides metrics collection for PipelineRun resources.
 package pipelinerunmetrics
 
 import (
@@ -8,9 +7,8 @@ import (
 
 	"github.com/jonboulle/clockwork"
 
-	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tektoncd/results/pkg/apis/config"
-	sharedMetrics "github.com/tektoncd/results/pkg/metrics"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -21,15 +19,13 @@ import (
 )
 
 var (
-	prDeleteCount     = stats.Int64("pipelinerun_delete_count", "total number of deleted pipelineruns", stats.UnitDimensionless)
-	prDeleteCountView *view.View
-
+	prDeleteCount        = stats.Int64("pipelinerun_delete_count", "total number of deleted pipelineruns", stats.UnitDimensionless)
+	prDeleteCountView    *view.View
 	prDeleteDuration     = stats.Float64("pipelinerun_delete_duration_seconds", "the pipelinerun deletion time in seconds", stats.UnitSeconds)
 	prDeleteDurationView *view.View
-
-	pipelineTag  = tag.MustNewKey("pipeline")
-	namespaceTag = tag.MustNewKey("namespace")
-	statusTag    = tag.MustNewKey("status")
+	pipelineTag          = tag.MustNewKey("pipeline")
+	namespaceTag         = tag.MustNewKey("namespace")
+	statusTag            = tag.MustNewKey("status")
 )
 
 // Recorder is used to actually record PipelineRun metrics
@@ -43,7 +39,7 @@ func NewRecorder() *Recorder {
 	return &Recorder{clock: clockwork.NewRealClock()}
 }
 
-func registerView(logger *zap.SugaredLogger, cfg *config.Metrics) error {
+func viewRegister(logger *zap.SugaredLogger, cfg *config.Metrics) error {
 	var tags []tag.Key
 	switch cfg.PipelinerunLevel {
 	case config.PipelinerunLevelAtPipeline:
@@ -69,22 +65,23 @@ func registerView(logger *zap.SugaredLogger, cfg *config.Metrics) error {
 	}
 
 	prDeleteDurationView = &view.View{
-		Description: prDeleteDuration.Description(),
+		Description: prDeleteCount.Description(),
 		TagKeys:     append([]tag.Key{statusTag, namespaceTag}, tags...),
 		Measure:     prDeleteDuration,
 		Aggregation: distribution,
 	}
-
 	logger.Debug("registering pipelinerun metrics view")
-	return view.Register(prDeleteDurationView, prDeleteCountView)
+	return view.Register(prDeleteCountView, prDeleteDurationView)
 }
 
-func unregisterView(logger *zap.SugaredLogger) {
+func viewUnregister(logger *zap.SugaredLogger) {
 	logger.Debug("unregistering pipelinerun metrics view")
-	for _, v := range []*view.View{prDeleteDurationView, prDeleteCountView} {
-		if v != nil {
-			view.Unregister(v)
-		}
+	if prDeleteCountView != nil {
+		view.Unregister(prDeleteCountView)
+	}
+
+	if prDeleteDurationView != nil {
+		view.Unregister(prDeleteDurationView)
 	}
 }
 
@@ -100,18 +97,17 @@ func MetricsOnStore(logger *zap.SugaredLogger) func(name string,
 			logger.Error("Failed to do type insertion for extracting metrics config")
 			return
 		}
-		unregisterView(logger)
-		err := registerView(logger, cfg)
+		viewUnregister(logger)
+		err := viewRegister(logger, cfg)
 		if err != nil {
 			logger.Errorf("Failed to register View %v ", err)
 			return
 		}
-		sharedMetrics.IdempotentRegisterViews(logger)
 	}
 }
 
 // DurationAndCountDeleted counts for deleted number and records duration PipelineRuns
-func (r *Recorder) DurationAndCountDeleted(ctx context.Context, cfg *config.Metrics, pr *pipelinev1.PipelineRun) error {
+func (r *Recorder) DurationAndCountDeleted(ctx context.Context, cfg *config.Metrics, pr *pipelinev1beta1.PipelineRun) error {
 	pipelineName := "anonymous"
 	now := r.clock.Now()
 

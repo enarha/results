@@ -69,12 +69,6 @@ func NewWithDefaults(name, ns string, client k8s.Interface) *Pod {
 	}
 }
 
-// podResult holds the result of pod status check
-type podResult struct {
-	pod *corev1.Pod
-	err error
-}
-
 // Wait wait for the pod to get up and running
 func (p *Pod) Wait() (*corev1.Pod, error) {
 	// ensure pod exists before we actually check for it
@@ -83,68 +77,69 @@ func (p *Pod) Wait() (*corev1.Pod, error) {
 	}
 
 	stopC := make(chan struct{})
+	eventC := make(chan interface{})
 	mu := sync.Mutex{}
-
-	var result podResult
-
-	// Start watcher in a goroutine
-	go func() {
-		p.watcher(stopC, &result, &mu)
+	defer func() {
+		mu.Lock()
+		close(stopC)
+		close(eventC)
+		mu.Unlock()
 	}()
 
-	// Wait for stopC
-	<-stopC
-	return result.pod, result.err
+	p.watcher(stopC, eventC, &mu)
+
+	var pod *corev1.Pod
+	var err error
+	for e := range eventC {
+		pod, err = checkPodStatus(e)
+		if pod != nil || err != nil {
+			break
+		}
+	}
+
+	return pod, err
 }
 
-func (p *Pod) watcher(stopC chan struct{}, result *podResult, mu *sync.Mutex) {
+func (p *Pod) watcher(stopC <-chan struct{}, eventC chan<- interface{}, mu *sync.Mutex) {
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		p.Kc, time.Second*10,
 		informers.WithNamespace(p.Ns),
 		informers.WithTweakListOptions(podOpts(p.Name)))
 
-	updatePodStatus := func(obj interface{}) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		pod, err := checkPodStatus(obj)
-		if pod != nil || err != nil {
-			result.pod = pod
-			result.err = err
-			close(stopC)
-		}
-	}
-
-	_, err := factory.Core().V1().Pods().Informer().AddEventHandler(
+	factory.Core().V1().Pods().Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
+				mu.Lock()
+				defer mu.Unlock()
 				select {
 				case <-stopC:
 					return
 				default:
-					updatePodStatus(obj)
+					// default is used to avoid pseudo-random selection of multiple matching cases
+					eventC <- obj
 				}
 			},
-			UpdateFunc: func(_, newObj interface{}) {
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				mu.Lock()
+				defer mu.Unlock()
 				select {
 				case <-stopC:
 					return
 				default:
-					updatePodStatus(newObj)
+					eventC <- newObj
 				}
 			},
 			DeleteFunc: func(obj interface{}) {
+				mu.Lock()
+				defer mu.Unlock()
 				select {
 				case <-stopC:
 					return
 				default:
-					updatePodStatus(obj)
+					eventC <- obj
 				}
 			},
 		})
-	if err != nil {
-		return
-	}
 
 	factory.Start(stopC)
 	factory.WaitForCacheSync(stopC)
@@ -176,7 +171,7 @@ func checkPodStatus(obj interface{}) (*corev1.Pod, error) {
 	for _, c := range pod.Status.Conditions {
 		if c.Type == corev1.PodInitialized || c.Type == corev1.ContainersReady {
 			if c.Status == corev1.ConditionUnknown {
-				return pod, fmt.Errorf("%s", c.Message)
+				return pod, fmt.Errorf(c.Message)
 			}
 		}
 	}

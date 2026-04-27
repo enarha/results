@@ -4,22 +4,19 @@ package ecrpublic
 
 import (
 	"context"
-	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Deletes a list of specified images that are within a repository in a public
-// registry. Images are specified with either an imageTag or imageDigest .
-//
-// You can remove a tag from an image by specifying the image's tag in your
-// request. When you remove the last tag from an image, the image is deleted from
-// your repository.
-//
-// You can completely delete an image (and all of its tags) by specifying the
-// digest of the image in your request.
+// Deletes a list of specified images within a repository in a public registry.
+// Images are specified with either an imageTag or imageDigest. You can remove a
+// tag from an image by specifying the image's tag in your request. When you remove
+// the last tag from an image, the image is deleted from your repository. You can
+// completely delete an image (and all of its tags) by specifying the image's
+// digest in your request.
 func (c *Client) BatchDeleteImage(ctx context.Context, params *BatchDeleteImageInput, optFns ...func(*Options)) (*BatchDeleteImageOutput, error) {
 	if params == nil {
 		params = &BatchDeleteImageInput{}
@@ -37,8 +34,8 @@ func (c *Client) BatchDeleteImage(ctx context.Context, params *BatchDeleteImageI
 
 type BatchDeleteImageInput struct {
 
-	// A list of image ID references that correspond to images to delete. The format
-	// of the imageIds reference is imageTag=tag or imageDigest=digest .
+	// A list of image ID references that correspond to images to delete. The format of
+	// the imageIds reference is imageTag=tag or imageDigest=digest.
 	//
 	// This member is required.
 	ImageIds []types.ImageIdentifier
@@ -48,9 +45,9 @@ type BatchDeleteImageInput struct {
 	// This member is required.
 	RepositoryName *string
 
-	// The Amazon Web Services account ID, or registry alias, that's associated with
-	// the registry that contains the image to delete. If you do not specify a
-	// registry, the default public registry is assumed.
+	// The AWS account ID associated with the registry that contains the image to
+	// delete. If you do not specify a registry, the default public registry is
+	// assumed.
 	RegistryId *string
 
 	noSmithyDocumentSerde
@@ -71,9 +68,6 @@ type BatchDeleteImageOutput struct {
 }
 
 func (c *Client) addOperationBatchDeleteImageMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpBatchDeleteImage{}, middleware.After)
 	if err != nil {
 		return err
@@ -82,41 +76,34 @@ func (c *Client) addOperationBatchDeleteImageMiddlewares(stack *middleware.Stack
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "BatchDeleteImage"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
-
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addClientRequestID(stack); err != nil {
+	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addComputeContentLength(stack); err != nil {
+	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addComputePayloadSHA256(stack); err != nil {
+	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetryMiddlewares(stack, options); err != nil {
 		return err
 	}
-	if err = addRawResponseToMetadata(stack); err != nil {
+	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
+	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack, options); err != nil {
+	if err = addClientUserAgent(stack); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -125,22 +112,10 @@ func (c *Client) addOperationBatchDeleteImageMiddlewares(stack *middleware.Stack
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = addOpBatchDeleteImageValidationMiddleware(stack); err != nil {
 		return err
 	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opBatchDeleteImage(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -152,21 +127,6 @@ func (c *Client) addOperationBatchDeleteImageMiddlewares(stack *middleware.Stack
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -174,6 +134,7 @@ func newServiceMetadataMiddleware_opBatchDeleteImage(region string) *awsmiddlewa
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
+		SigningName:   "ecr-public",
 		OperationName: "BatchDeleteImage",
 	}
 }

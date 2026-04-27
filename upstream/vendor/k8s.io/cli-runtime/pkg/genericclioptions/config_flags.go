@@ -27,8 +27,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/cli-runtime/pkg/genericiooptions"
-	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/discovery"
 	diskcached "k8s.io/client-go/discovery/cached/disk"
 	"k8s.io/client-go/rest"
@@ -39,25 +37,24 @@ import (
 )
 
 const (
-	flagClusterName        = "cluster"
-	flagAuthInfoName       = "user"
-	flagContext            = "context"
-	flagNamespace          = "namespace"
-	flagAPIServer          = "server"
-	flagTLSServerName      = "tls-server-name"
-	flagInsecure           = "insecure-skip-tls-verify"
-	flagCertFile           = "client-certificate"
-	flagKeyFile            = "client-key"
-	flagCAFile             = "certificate-authority"
-	flagBearerToken        = "token"
-	flagImpersonate        = "as"
-	flagImpersonateUID     = "as-uid"
-	flagImpersonateGroup   = "as-group"
-	flagUsername           = "username"
-	flagPassword           = "password"
-	flagTimeout            = "request-timeout"
-	flagCacheDir           = "cache-dir"
-	flagDisableCompression = "disable-compression"
+	flagClusterName      = "cluster"
+	flagAuthInfoName     = "user"
+	flagContext          = "context"
+	flagNamespace        = "namespace"
+	flagAPIServer        = "server"
+	flagTLSServerName    = "tls-server-name"
+	flagInsecure         = "insecure-skip-tls-verify"
+	flagCertFile         = "client-certificate"
+	flagKeyFile          = "client-key"
+	flagCAFile           = "certificate-authority"
+	flagBearerToken      = "token"
+	flagImpersonate      = "as"
+	flagImpersonateUID   = "as-uid"
+	flagImpersonateGroup = "as-group"
+	flagUsername         = "username"
+	flagPassword         = "password"
+	flagTimeout          = "request-timeout"
+	flagCacheDir         = "cache-dir"
 )
 
 // RESTClientGetter is an interface that the ConfigFlags describe to provide an easier way to mock for commands
@@ -83,24 +80,23 @@ type ConfigFlags struct {
 	KubeConfig *string
 
 	// config flags
-	ClusterName        *string
-	AuthInfoName       *string
-	Context            *string
-	Namespace          *string
-	APIServer          *string
-	TLSServerName      *string
-	Insecure           *bool
-	CertFile           *string
-	KeyFile            *string
-	CAFile             *string
-	BearerToken        *string
-	Impersonate        *string
-	ImpersonateUID     *string
-	ImpersonateGroup   *[]string
-	Username           *string
-	Password           *string
-	Timeout            *string
-	DisableCompression *bool
+	ClusterName      *string
+	AuthInfoName     *string
+	Context          *string
+	Namespace        *string
+	APIServer        *string
+	TLSServerName    *string
+	Insecure         *bool
+	CertFile         *string
+	KeyFile          *string
+	CAFile           *string
+	BearerToken      *string
+	Impersonate      *string
+	ImpersonateUID   *string
+	ImpersonateGroup *[]string
+	Username         *string
+	Password         *string
+	Timeout          *string
 	// If non-nil, wrap config function can transform the Config
 	// before it is returned in ToRESTConfig function.
 	WrapConfigFn func(*rest.Config) *rest.Config
@@ -124,9 +120,6 @@ type ConfigFlags struct {
 	// Allows increasing qps used for discovery, this is useful
 	// in clusters with many registered resources
 	discoveryQPS float32
-	// Allows all possible warnings are printed in a standardized
-	// format.
-	warningPrinter *printers.WarningPrinter
 }
 
 // ToRESTConfig implements RESTClientGetter.
@@ -205,9 +198,6 @@ func (f *ConfigFlags) toRawKubeConfigLoader() clientcmd.ClientConfig {
 	}
 	if f.Insecure != nil {
 		overrides.ClusterInfo.InsecureSkipTLSVerify = *f.Insecure
-	}
-	if f.DisableCompression != nil {
-		overrides.ClusterInfo.DisableCompression = *f.DisableCompression
 	}
 
 	// bind context flags
@@ -337,11 +327,7 @@ func (f *ConfigFlags) toRESTMapper() (meta.RESTMapper, error) {
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
-	expander := restmapper.NewShortcutExpander(mapper, discoveryClient, func(a string) {
-		if f.warningPrinter != nil {
-			f.warningPrinter.Print(a)
-		}
-	})
+	expander := restmapper.NewShortcutExpander(mapper, discoveryClient)
 	return expander, nil
 }
 
@@ -407,9 +393,6 @@ func (f *ConfigFlags) AddFlags(flags *pflag.FlagSet) {
 	if f.Timeout != nil {
 		flags.StringVar(f.Timeout, flagTimeout, *f.Timeout, "The length of time to wait before giving up on a single server request. Non-zero values should contain a corresponding time unit (e.g. 1s, 2m, 3h). A value of zero means don't timeout requests.")
 	}
-	if f.DisableCompression != nil {
-		flags.BoolVar(f.DisableCompression, flagDisableCompression, *f.DisableCompression, "If true, opt-out of response compression for all requests to the server")
-	}
 }
 
 // WithDeprecatedPasswordFlag enables the username and password config flags
@@ -437,38 +420,30 @@ func (f *ConfigFlags) WithWrapConfigFn(wrapConfigFn func(*rest.Config) *rest.Con
 	return f
 }
 
-// WithWarningPrinter initializes WarningPrinter with the given IOStreams
-func (f *ConfigFlags) WithWarningPrinter(ioStreams genericiooptions.IOStreams) *ConfigFlags {
-	f.warningPrinter = printers.NewWarningPrinter(ioStreams.ErrOut, printers.WarningPrinterOptions{Color: printers.AllowsColorOutput(ioStreams.ErrOut)})
-	return f
-}
-
 // NewConfigFlags returns ConfigFlags with default values set
 func NewConfigFlags(usePersistentConfig bool) *ConfigFlags {
 	impersonateGroup := []string{}
 	insecure := false
-	disableCompression := false
 
 	return &ConfigFlags{
 		Insecure:   &insecure,
 		Timeout:    utilpointer.String("0"),
 		KubeConfig: utilpointer.String(""),
 
-		CacheDir:           utilpointer.String(getDefaultCacheDir()),
-		ClusterName:        utilpointer.String(""),
-		AuthInfoName:       utilpointer.String(""),
-		Context:            utilpointer.String(""),
-		Namespace:          utilpointer.String(""),
-		APIServer:          utilpointer.String(""),
-		TLSServerName:      utilpointer.String(""),
-		CertFile:           utilpointer.String(""),
-		KeyFile:            utilpointer.String(""),
-		CAFile:             utilpointer.String(""),
-		BearerToken:        utilpointer.String(""),
-		Impersonate:        utilpointer.String(""),
-		ImpersonateUID:     utilpointer.String(""),
-		ImpersonateGroup:   &impersonateGroup,
-		DisableCompression: &disableCompression,
+		CacheDir:         utilpointer.String(getDefaultCacheDir()),
+		ClusterName:      utilpointer.String(""),
+		AuthInfoName:     utilpointer.String(""),
+		Context:          utilpointer.String(""),
+		Namespace:        utilpointer.String(""),
+		APIServer:        utilpointer.String(""),
+		TLSServerName:    utilpointer.String(""),
+		CertFile:         utilpointer.String(""),
+		KeyFile:          utilpointer.String(""),
+		CAFile:           utilpointer.String(""),
+		BearerToken:      utilpointer.String(""),
+		Impersonate:      utilpointer.String(""),
+		ImpersonateUID:   utilpointer.String(""),
+		ImpersonateGroup: &impersonateGroup,
 
 		usePersistentConfig: usePersistentConfig,
 		// The more groups you have, the more discovery requests you need to make.

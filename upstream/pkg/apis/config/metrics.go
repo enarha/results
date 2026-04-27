@@ -1,4 +1,3 @@
-// Package config provides configuration types for Results APIs.
 package config
 
 import (

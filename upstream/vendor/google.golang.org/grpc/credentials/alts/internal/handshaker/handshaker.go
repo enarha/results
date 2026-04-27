@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"time"
 
 	"golang.org/x/sync/semaphore"
 	grpc "google.golang.org/grpc"
@@ -61,6 +60,8 @@ var (
 	// control number of concurrent created (but not closed) handshakes.
 	clientHandshakes = semaphore.NewWeighted(int64(envconfig.ALTSMaxConcurrentHandshakes))
 	serverHandshakes = semaphore.NewWeighted(int64(envconfig.ALTSMaxConcurrentHandshakes))
+	// errDropped occurs when maxPendingHandshakes is reached.
+	errDropped = errors.New("maximum number of concurrent ALTS handshakes is reached")
 	// errOutOfBound occurs when the handshake service returns a consumed
 	// bytes value larger than the buffer that was passed to it originally.
 	errOutOfBound = errors.New("handshaker service consumed bytes value is out-of-bound")
@@ -88,8 +89,6 @@ type ClientHandshakerOptions struct {
 	TargetServiceAccounts []string
 	// RPCVersions specifies the gRPC versions accepted by the client.
 	RPCVersions *altspb.RpcProtocolVersions
-	// BoundAccessToken is a bound access token to be sent to the server for authentication.
-	BoundAccessToken string
 }
 
 // ServerHandshakerOptions contains the server handshaker options that can
@@ -130,7 +129,7 @@ type altsHandshaker struct {
 // NewClientHandshaker creates a core.Handshaker that performs a client-side
 // ALTS handshake by acting as a proxy between the peer and the ALTS handshaker
 // service in the metadata server.
-func NewClientHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, opts *ClientHandshakerOptions) (core.Handshaker, error) {
+func NewClientHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn, opts *ClientHandshakerOptions) (core.Handshaker, error) {
 	return &altsHandshaker{
 		stream:     nil,
 		conn:       c,
@@ -143,7 +142,7 @@ func NewClientHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, o
 // NewServerHandshaker creates a core.Handshaker that performs a server-side
 // ALTS handshake by acting as a proxy between the peer and the ALTS handshaker
 // service in the metadata server.
-func NewServerHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, opts *ServerHandshakerOptions) (core.Handshaker, error) {
+func NewServerHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn, opts *ServerHandshakerOptions) (core.Handshaker, error) {
 	return &altsHandshaker{
 		stream:     nil,
 		conn:       c,
@@ -156,8 +155,8 @@ func NewServerHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, o
 // ClientHandshake starts and completes a client ALTS handshake for GCP. Once
 // done, ClientHandshake returns a secure connection.
 func (h *altsHandshaker) ClientHandshake(ctx context.Context) (net.Conn, credentials.AuthInfo, error) {
-	if err := clientHandshakes.Acquire(ctx, 1); err != nil {
-		return nil, nil, err
+	if !clientHandshakes.TryAcquire(1) {
+		return nil, nil, errDropped
 	}
 	defer clientHandshakes.Release(1)
 
@@ -197,9 +196,7 @@ func (h *altsHandshaker) ClientHandshake(ctx context.Context) (net.Conn, credent
 			},
 		},
 	}
-	if h.clientOpts.BoundAccessToken != "" {
-		req.GetClientStart().AccessToken = h.clientOpts.BoundAccessToken
-	}
+
 	conn, result, err := h.doHandshake(req)
 	if err != nil {
 		return nil, nil, err
@@ -211,8 +208,8 @@ func (h *altsHandshaker) ClientHandshake(ctx context.Context) (net.Conn, credent
 // ServerHandshake starts and completes a server ALTS handshake for GCP. Once
 // done, ServerHandshake returns a secure connection.
 func (h *altsHandshaker) ServerHandshake(ctx context.Context) (net.Conn, credentials.AuthInfo, error) {
-	if err := serverHandshakes.Acquire(ctx, 1); err != nil {
-		return nil, nil, err
+	if !serverHandshakes.TryAcquire(1) {
+		return nil, nil, errDropped
 	}
 	defer serverHandshakes.Release(1)
 
@@ -298,11 +295,11 @@ func (h *altsHandshaker) doHandshake(req *altspb.HandshakerReq) (net.Conn, *alts
 
 func (h *altsHandshaker) accessHandshakerService(req *altspb.HandshakerReq) (*altspb.HandshakerResp, error) {
 	if err := h.stream.Send(req); err != nil {
-		return nil, fmt.Errorf("failed to send ALTS handshaker request: %w", err)
+		return nil, err
 	}
 	resp, err := h.stream.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive ALTS handshaker response: %w", err)
+		return nil, err
 	}
 	return resp, nil
 }
@@ -311,11 +308,8 @@ func (h *altsHandshaker) accessHandshakerService(req *altspb.HandshakerReq) (*al
 // the results. Handshaker service takes care of frame parsing, so we read
 // whatever received from the network and send it to the handshaker service.
 func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []byte) (*altspb.HandshakerResult, []byte, error) {
-	var lastWriteTime time.Time
-	buf := make([]byte, frameLimit)
 	for {
 		if len(resp.OutFrames) > 0 {
-			lastWriteTime = time.Now()
 			if _, err := h.conn.Write(resp.OutFrames); err != nil {
 				return nil, nil, err
 			}
@@ -323,6 +317,7 @@ func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []b
 		if resp.Result != nil {
 			return resp.Result, extra, nil
 		}
+		buf := make([]byte, frameLimit)
 		n, err := h.conn.Read(buf)
 		if err != nil && err != io.EOF {
 			return nil, nil, err
@@ -338,15 +333,11 @@ func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []b
 		// Append extra bytes from the previous interaction with the
 		// handshaker service with the current buffer read from conn.
 		p := append(extra, buf[:n]...)
-		// Compute the time elapsed since the last write to the peer.
-		timeElapsed := time.Since(lastWriteTime)
-		timeElapsedMs := uint32(timeElapsed.Milliseconds())
 		// From here on, p and extra point to the same slice.
 		resp, err = h.accessHandshakerService(&altspb.HandshakerReq{
 			ReqOneof: &altspb.HandshakerReq_Next{
 				Next: &altspb.NextHandshakeMessageReq{
-					InBytes:          p,
-					NetworkLatencyMs: timeElapsedMs,
+					InBytes: p,
 				},
 			},
 		})

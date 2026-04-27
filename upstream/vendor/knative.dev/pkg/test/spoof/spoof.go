@@ -100,8 +100,7 @@ func New(
 	resolvable bool,
 	endpointOverride string,
 	requestInterval, requestTimeout time.Duration,
-	opts ...TransportOption,
-) (*SpoofingClient, error) {
+	opts ...TransportOption) (*SpoofingClient, error) {
 	endpoint, mapper, err := ResolveEndpoint(ctx, kubeClientset, domain, resolvable, endpointOverride)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get the cluster endpoint: %w", err)
@@ -168,7 +167,7 @@ func (sc *SpoofingClient) Poll(req *http.Request, inState ResponseChecker, check
 	}
 
 	var resp *Response
-	err := wait.PollUntilContextTimeout(context.Background(), sc.RequestInterval, sc.RequestTimeout, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollImmediate(sc.RequestInterval, sc.RequestTimeout, func() (bool, error) {
 		// Starting span to capture zipkin trace.
 		traceContext, span := trace.StartSpan(req.Context(), "SpoofingClient-Trace")
 		defer span.End()
@@ -266,7 +265,7 @@ func DefaultResponseRetryChecker(resp *Response) (bool, error) {
 // logZipkinTrace provides support to log Zipkin Trace for param: spoofResponse
 // We only log Zipkin trace for HTTP server errors i.e for HTTP status codes between 500 to 600
 func (sc *SpoofingClient) logZipkinTrace(spoofResp *Response) {
-	if !zipkin.IsTracingEnabled() || spoofResp.StatusCode < http.StatusInternalServerError || spoofResp.StatusCode >= 600 {
+	if !zipkin.ZipkinTracingEnabled || spoofResp.StatusCode < http.StatusInternalServerError || spoofResp.StatusCode >= 600 {
 		return
 	}
 
@@ -289,8 +288,8 @@ func (sc *SpoofingClient) WaitForEndpointState(
 	url *url.URL,
 	inState ResponseChecker,
 	desc string,
-	opts ...RequestOption,
-) (*Response, error) {
+	opts ...RequestOption) (*Response, error) {
+
 	return sc.endpointState(
 		ctx,
 		url,
@@ -308,8 +307,7 @@ func (sc *SpoofingClient) endpointState(
 	desc string,
 	f func(*http.Request, ResponseChecker) (*Response, error),
 	logName string,
-	opts ...RequestOption,
-) (*Response, error) {
+	opts ...RequestOption) (*Response, error) {
 	defer logging.GetEmitableSpan(ctx, logName+"/"+desc).End()
 
 	if url.Scheme == "" || url.Host == "" {
@@ -350,8 +348,7 @@ func (sc *SpoofingClient) CheckEndpointState(
 	url *url.URL,
 	inState ResponseChecker,
 	desc string,
-	opts ...RequestOption,
-) (*Response, error) {
+	opts ...RequestOption) (*Response, error) {
 	return sc.endpointState(
 		ctx,
 		url,

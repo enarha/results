@@ -19,88 +19,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 
 	authchallenge "github.com/docker/distribution/registry/client/auth/challenge"
-
 	"github.com/google/go-containerregistry/internal/redact"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
 )
 
-type Token struct {
-	Token        string `json:"token"`
-	AccessToken  string `json:"access_token,omitempty"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-}
-
-// Exchange requests a registry Token with the given scopes.
-func Exchange(ctx context.Context, reg name.Registry, auth authn.Authenticator, t http.RoundTripper, scopes []string, pr *Challenge) (*Token, error) {
-	if strings.ToLower(pr.Scheme) != "bearer" {
-		// TODO: Pretend token for basic?
-		return nil, fmt.Errorf("challenge scheme %q is not bearer", pr.Scheme)
-	}
-	bt, err := fromChallenge(reg, auth, t, pr, scopes...)
-	if err != nil {
-		return nil, err
-	}
-	authcfg, err := authn.Authorization(ctx, auth)
-	if err != nil {
-		return nil, err
-	}
-	tok, err := bt.Refresh(ctx, authcfg)
-	if err != nil {
-		return nil, err
-	}
-	return tok, nil
-}
-
-// FromToken returns a transport given a Challenge + Token.
-func FromToken(reg name.Registry, auth authn.Authenticator, t http.RoundTripper, pr *Challenge, tok *Token) (http.RoundTripper, error) {
-	if strings.ToLower(pr.Scheme) != "bearer" {
-		return &Wrapper{&basicTransport{inner: t, auth: auth, target: reg.RegistryStr()}}, nil
-	}
-	bt, err := fromChallenge(reg, auth, t, pr)
-	if err != nil {
-		return nil, err
-	}
-	if tok.Token != "" {
-		bt.bearer.RegistryToken = tok.Token
-	}
-	return &Wrapper{bt}, nil
-}
-
-func fromChallenge(reg name.Registry, auth authn.Authenticator, t http.RoundTripper, pr *Challenge, scopes ...string) (*bearerTransport, error) {
-	// We require the realm, which tells us where to send our Basic auth to turn it into Bearer auth.
-	realm, ok := pr.Parameters["realm"]
-	if !ok {
-		return nil, fmt.Errorf("malformed www-authenticate, missing realm: %v", pr.Parameters)
-	}
-	service := pr.Parameters["service"]
-	scheme := "https"
-	if pr.Insecure {
-		scheme = "http"
-	}
-	return &bearerTransport{
-		inner:    t,
-		basic:    auth,
-		realm:    realm,
-		registry: reg,
-		service:  service,
-		scopes:   scopes,
-		scheme:   scheme,
-	}, nil
-}
-
 type bearerTransport struct {
-	mx sync.RWMutex
 	// Wrapped by bearerTransport.
 	inner http.RoundTripper
 	// Basic credentials that we exchange for bearer tokens.
@@ -141,11 +73,8 @@ func (bt *bearerTransport) RoundTrip(in *http.Request) (*http.Response, error) {
 		// we are redirected, only set it when the authorization header matches
 		// the registry with which we are interacting.
 		// In case of redirect http.Client can use an empty Host, check URL too.
-		if matchesHost(bt.registry.RegistryStr(), in, bt.scheme) {
-			bt.mx.RLock()
-			localToken := bt.bearer.RegistryToken
-			bt.mx.RUnlock()
-			hdr := fmt.Sprintf("Bearer %s", localToken)
+		if matchesHost(bt.registry, in, bt.scheme) {
+			hdr := fmt.Sprintf("Bearer %s", bt.bearer.RegistryToken)
 			in.Header.Set("Authorization", hdr)
 		}
 		return bt.inner.RoundTrip(in)
@@ -162,12 +91,11 @@ func (bt *bearerTransport) RoundTrip(in *http.Request) (*http.Response, error) {
 		res.Body.Close()
 
 		newScopes := []string{}
-		bt.mx.Lock()
-		got := stringSet(bt.scopes)
 		for _, wac := range challenges {
 			// TODO(jonjohnsonjr): Should we also update "realm" or "service"?
 			if want, ok := wac.Parameters["scope"]; ok {
 				// Add any scopes that we don't already request.
+				got := stringSet(bt.scopes)
 				if _, ok := got[want]; !ok {
 					newScopes = append(newScopes, want)
 				}
@@ -179,7 +107,6 @@ func (bt *bearerTransport) RoundTrip(in *http.Request) (*http.Response, error) {
 		// otherwise the registry might just ignore it :/
 		newScopes = append(newScopes, bt.scopes...)
 		bt.scopes = newScopes
-		bt.mx.Unlock()
 
 		// TODO(jonjohnsonjr): Teach transport.Error about "error" and "error_description" from challenge.
 
@@ -198,50 +125,17 @@ func (bt *bearerTransport) RoundTrip(in *http.Request) (*http.Response, error) {
 // The basic token exchange is attempted first, falling back to the oauth flow.
 // If the IdentityToken is set, this indicates that we should start with the oauth flow.
 func (bt *bearerTransport) refresh(ctx context.Context) error {
-	auth, err := authn.Authorization(ctx, bt.basic)
+	auth, err := bt.basic.Authorization()
 	if err != nil {
 		return err
 	}
 
 	if auth.RegistryToken != "" {
-		bt.mx.Lock()
 		bt.bearer.RegistryToken = auth.RegistryToken
-		bt.mx.Unlock()
 		return nil
 	}
 
-	response, err := bt.Refresh(ctx, auth)
-	if err != nil {
-		return err
-	}
-
-	// Some registries set access_token instead of token. See #54.
-	if response.AccessToken != "" {
-		response.Token = response.AccessToken
-	}
-
-	// Find a token to turn into a Bearer authenticator
-	if response.Token != "" {
-		bt.mx.Lock()
-		bt.bearer.RegistryToken = response.Token
-		bt.mx.Unlock()
-	}
-
-	// If we obtained a refresh token from the oauth flow, use that for refresh() now.
-	if response.RefreshToken != "" {
-		bt.basic = authn.FromConfig(authn.AuthConfig{
-			IdentityToken: response.RefreshToken,
-		})
-	}
-
-	return nil
-}
-
-func (bt *bearerTransport) Refresh(ctx context.Context, auth *authn.AuthConfig) (*Token, error) {
-	var (
-		content []byte
-		err     error
-	)
+	var content []byte
 	if auth.IdentityToken != "" {
 		// If the secret being stored is an identity token,
 		// the Username should be set to <token>, which indicates
@@ -258,25 +152,48 @@ func (bt *bearerTransport) Refresh(ctx context.Context, auth *authn.AuthConfig) 
 		content, err = bt.refreshBasic(ctx)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var response Token
+	// Some registries don't have "token" in the response. See #54.
+	type tokenResponse struct {
+		Token        string `json:"token"`
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		// TODO: handle expiry?
+	}
+
+	var response tokenResponse
 	if err := json.Unmarshal(content, &response); err != nil {
-		return nil, err
+		return err
 	}
 
-	if response.Token == "" && response.AccessToken == "" {
-		return &response, fmt.Errorf("no token in bearer response:\n%s", content)
+	// Some registries set access_token instead of token.
+	if response.AccessToken != "" {
+		response.Token = response.AccessToken
 	}
 
-	return &response, nil
+	// Find a token to turn into a Bearer authenticator
+	if response.Token != "" {
+		bt.bearer.RegistryToken = response.Token
+	} else {
+		return fmt.Errorf("no token in bearer response:\n%s", content)
+	}
+
+	// If we obtained a refresh token from the oauth flow, use that for refresh() now.
+	if response.RefreshToken != "" {
+		bt.basic = authn.FromConfig(authn.AuthConfig{
+			IdentityToken: response.RefreshToken,
+		})
+	}
+
+	return nil
 }
 
-func matchesHost(host string, in *http.Request, scheme string) bool {
+func matchesHost(reg name.Registry, in *http.Request, scheme string) bool {
 	canonicalHeaderHost := canonicalAddress(in.Host, scheme)
 	canonicalURLHost := canonicalAddress(in.URL.Host, scheme)
-	canonicalRegistryHost := canonicalAddress(host, scheme)
+	canonicalRegistryHost := canonicalAddress(reg.RegistryStr(), scheme)
 	return canonicalHeaderHost == canonicalRegistryHost || canonicalURLHost == canonicalRegistryHost
 }
 
@@ -307,7 +224,7 @@ func canonicalAddress(host, scheme string) (address string) {
 
 // https://docs.docker.com/registry/spec/auth/oauth/
 func (bt *bearerTransport) refreshOauth(ctx context.Context) ([]byte, error) {
-	auth, err := authn.Authorization(ctx, bt.basic)
+	auth, err := bt.basic.Authorization()
 	if err != nil {
 		return nil, err
 	}
@@ -318,9 +235,7 @@ func (bt *bearerTransport) refreshOauth(ctx context.Context) ([]byte, error) {
 	}
 
 	v := url.Values{}
-	bt.mx.RLock()
 	v.Set("scope", strings.Join(bt.scopes, " "))
-	bt.mx.RUnlock()
 	if bt.service != "" {
 		v.Set("service", bt.service)
 	}
@@ -353,13 +268,11 @@ func (bt *bearerTransport) refreshOauth(ctx context.Context) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if err := CheckError(resp, http.StatusOK); err != nil {
-		if bt.basic == authn.Anonymous {
-			logs.Warn.Printf("No matching credentials were found for %q", bt.registry)
-		}
+		logs.Warn.Printf("No matching credentials were found for %q", bt.registry)
 		return nil, err
 	}
 
-	return io.ReadAll(resp.Body)
+	return ioutil.ReadAll(resp.Body)
 }
 
 // https://docs.docker.com/registry/spec/auth/token/
@@ -376,9 +289,7 @@ func (bt *bearerTransport) refreshBasic(ctx context.Context) ([]byte, error) {
 	client := http.Client{Transport: b}
 
 	v := u.Query()
-	bt.mx.RLock()
 	v["scope"] = bt.scopes
-	bt.mx.RUnlock()
 	v.Set("service", bt.service)
 	u.RawQuery = v.Encode()
 
@@ -397,11 +308,9 @@ func (bt *bearerTransport) refreshBasic(ctx context.Context) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if err := CheckError(resp, http.StatusOK); err != nil {
-		if bt.basic == authn.Anonymous {
-			logs.Warn.Printf("No matching credentials were found for %q", bt.registry)
-		}
+		logs.Warn.Printf("No matching credentials were found for %q", bt.registry)
 		return nil, err
 	}
 
-	return io.ReadAll(resp.Body)
+	return ioutil.ReadAll(resp.Body)
 }

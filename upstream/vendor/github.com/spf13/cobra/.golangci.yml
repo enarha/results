@@ -1,4 +1,4 @@
-# Copyright 2013-2023 The Cobra Authors
+# Copyright 2013-2022 The Cobra Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,48 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version: "2"
-
 run:
-  timeout: 5m
-
-formatters:
-  enable:
-    - gofmt
-    - goimports
+  deadline: 5m
 
 linters:
-  default: none
+  disable-all: true
   enable:
     #- bodyclose
+    - deadcode
     #- depguard
     #- dogsled
     #- dupl
     - errcheck
     #- exhaustive
     #- funlen
+    - gas
     #- gochecknoinits
     - goconst
-    - gocritic
+    #- gocritic
     #- gocyclo
+    #- gofmt
+    - goimports
+    - golint
+    #- gomnd
     #- goprintffuncname
-    - gosec
+    #- gosec
+    #- gosimple
     - govet
     - ineffassign
+    - interfacer
     #- lll
-    - misspell
-    #- mnd
+    - maligned
+    - megacheck
+    #- misspell
     #- nakedret
     #- noctx
-    - nolintlint
+    #- nolintlint
     #- rowserrcheck
-    - staticcheck
+    #- scopelint
+    #- staticcheck
+    - structcheck
+    #- stylecheck
+    #- typecheck
     - unconvert
     #- unparam
-    - unused
+    #- unused
+    - varcheck
     #- whitespace
-  exclusions:
-    presets:
-      - common-false-positives
-      - legacy
-      - std-error-handling
+  fast: false

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package cel2sql provides utilities for converting CEL expressions to SQL queries.
 package cel2sql
 
 import (

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package errors //nolint:revive // Package provides db-specific error handling
+package errors
 
 import (
 	"errors"

@@ -17,7 +17,6 @@ package gcerr
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -132,7 +131,7 @@ func New(c ErrorCode, err error, callDepth int, msg string) *Error {
 }
 
 // Newf uses format and args to format a message, then calls New.
-func Newf(c ErrorCode, err error, format string, args ...any) *Error {
+func Newf(c ErrorCode, err error, format string, args ...interface{}) *Error {
 	return New(c, err, 2, fmt.Sprintf(format, args...))
 }
 
@@ -141,17 +140,20 @@ func Newf(c ErrorCode, err error, format string, args ...any) *Error {
 // It returns true if err is a retry error, a context error, io.EOF, or if it wraps
 // one of those.
 func DoNotWrap(err error) bool {
-	if errors.Is(err, io.EOF) {
+	if xerrors.Is(err, io.EOF) {
 		return true
 	}
-	if errors.Is(err, context.Canceled) {
+	if xerrors.Is(err, context.Canceled) {
 		return true
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if xerrors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 	var r *retry.ContextError
-	return errors.As(err, &r)
+	if xerrors.As(err, &r) {
+		return true
+	}
+	return false
 }
 
 // GRPCCode extracts the gRPC status code and converts it into an ErrorCode.
@@ -187,7 +189,7 @@ func GRPCCode(err error) ErrorCode {
 // It performs some initial nil checks, and does a single level of unwrapping
 // when err is a *gcerr.Error. Then it calls its errorAs argument, which should
 // be a driver implementation of ErrorAs.
-func ErrorAs(err error, target any, errorAs func(error, any) bool) bool {
+func ErrorAs(err error, target interface{}, errorAs func(error, interface{}) bool) bool {
 	if err == nil {
 		return false
 	}

@@ -4,21 +4,17 @@
     "outputs" : {
       "dnsSuffix" : "amazonaws.com",
       "dualStackDnsSuffix" : "api.aws",
-      "implicitGlobalRegion" : "us-east-1",
       "name" : "aws",
       "supportsDualStack" : true,
       "supportsFIPS" : true
     },
-    "regionRegex" : "^(us|eu|ap|sa|ca|me|af|il|mx)\\-\\w+\\-\\d+$",
+    "regionRegex" : "^(us|eu|ap|sa|ca|me|af|il)\\-\\w+\\-\\d+$",
     "regions" : {
       "af-south-1" : {
         "description" : "Africa (Cape Town)"
       },
       "ap-east-1" : {
         "description" : "Asia Pacific (Hong Kong)"
-      },
-      "ap-east-2" : {
-        "description" : "Asia Pacific (Taipei)"
       },
       "ap-northeast-1" : {
         "description" : "Asia Pacific (Tokyo)"
@@ -47,23 +43,11 @@
       "ap-southeast-4" : {
         "description" : "Asia Pacific (Melbourne)"
       },
-      "ap-southeast-5" : {
-        "description" : "Asia Pacific (Malaysia)"
-      },
-      "ap-southeast-6" : {
-        "description" : "Asia Pacific (New Zealand)"
-      },
-      "ap-southeast-7" : {
-        "description" : "Asia Pacific (Thailand)"
-      },
       "aws-global" : {
-        "description" : "aws global region"
+        "description" : "AWS Standard global region"
       },
       "ca-central-1" : {
         "description" : "Canada (Central)"
-      },
-      "ca-west-1" : {
-        "description" : "Canada West (Calgary)"
       },
       "eu-central-1" : {
         "description" : "Europe (Frankfurt)"
@@ -98,9 +82,6 @@
       "me-south-1" : {
         "description" : "Middle East (Bahrain)"
       },
-      "mx-central-1" : {
-        "description" : "Mexico (Central)"
-      },
       "sa-east-1" : {
         "description" : "South America (Sao Paulo)"
       },
@@ -122,7 +103,6 @@
     "outputs" : {
       "dnsSuffix" : "amazonaws.com.cn",
       "dualStackDnsSuffix" : "api.amazonwebservices.com.cn",
-      "implicitGlobalRegion" : "cn-northwest-1",
       "name" : "aws-cn",
       "supportsDualStack" : true,
       "supportsFIPS" : true
@@ -130,7 +110,7 @@
     "regionRegex" : "^cn\\-\\w+\\-\\d+$",
     "regions" : {
       "aws-cn-global" : {
-        "description" : "aws-cn global region"
+        "description" : "AWS China global region"
       },
       "cn-north-1" : {
         "description" : "China (Beijing)"
@@ -140,35 +120,39 @@
       }
     }
   }, {
-    "id" : "aws-eusc",
+    "id" : "aws-us-gov",
     "outputs" : {
-      "dnsSuffix" : "amazonaws.eu",
-      "dualStackDnsSuffix" : "api.amazonwebservices.eu",
-      "implicitGlobalRegion" : "eusc-de-east-1",
-      "name" : "aws-eusc",
+      "dnsSuffix" : "amazonaws.com",
+      "dualStackDnsSuffix" : "api.aws",
+      "name" : "aws-us-gov",
       "supportsDualStack" : true,
       "supportsFIPS" : true
     },
-    "regionRegex" : "^eusc\\-(de)\\-\\w+\\-\\d+$",
+    "regionRegex" : "^us\\-gov\\-\\w+\\-\\d+$",
     "regions" : {
-      "eusc-de-east-1" : {
-        "description" : "EU (Germany)"
+      "aws-us-gov-global" : {
+        "description" : "AWS GovCloud (US) global region"
+      },
+      "us-gov-east-1" : {
+        "description" : "AWS GovCloud (US-East)"
+      },
+      "us-gov-west-1" : {
+        "description" : "AWS GovCloud (US-West)"
       }
     }
   }, {
     "id" : "aws-iso",
     "outputs" : {
       "dnsSuffix" : "c2s.ic.gov",
-      "dualStackDnsSuffix" : "api.aws.ic.gov",
-      "implicitGlobalRegion" : "us-iso-east-1",
+      "dualStackDnsSuffix" : "c2s.ic.gov",
       "name" : "aws-iso",
-      "supportsDualStack" : true,
+      "supportsDualStack" : false,
       "supportsFIPS" : true
     },
     "regionRegex" : "^us\\-iso\\-\\w+\\-\\d+$",
     "regions" : {
       "aws-iso-global" : {
-        "description" : "aws-iso global region"
+        "description" : "AWS ISO (US) global region"
       },
       "us-iso-east-1" : {
         "description" : "US ISO East"
@@ -181,87 +165,42 @@
     "id" : "aws-iso-b",
     "outputs" : {
       "dnsSuffix" : "sc2s.sgov.gov",
-      "dualStackDnsSuffix" : "api.aws.scloud",
-      "implicitGlobalRegion" : "us-isob-east-1",
+      "dualStackDnsSuffix" : "sc2s.sgov.gov",
       "name" : "aws-iso-b",
-      "supportsDualStack" : true,
+      "supportsDualStack" : false,
       "supportsFIPS" : true
     },
     "regionRegex" : "^us\\-isob\\-\\w+\\-\\d+$",
     "regions" : {
       "aws-iso-b-global" : {
-        "description" : "aws-iso-b global region"
+        "description" : "AWS ISOB (US) global region"
       },
       "us-isob-east-1" : {
         "description" : "US ISOB East (Ohio)"
-      },
-      "us-isob-west-1" : {
-        "description" : "US ISOB West"
       }
     }
   }, {
     "id" : "aws-iso-e",
     "outputs" : {
       "dnsSuffix" : "cloud.adc-e.uk",
-      "dualStackDnsSuffix" : "api.cloud-aws.adc-e.uk",
-      "implicitGlobalRegion" : "eu-isoe-west-1",
+      "dualStackDnsSuffix" : "cloud.adc-e.uk",
       "name" : "aws-iso-e",
-      "supportsDualStack" : true,
+      "supportsDualStack" : false,
       "supportsFIPS" : true
     },
     "regionRegex" : "^eu\\-isoe\\-\\w+\\-\\d+$",
-    "regions" : {
-      "aws-iso-e-global" : {
-        "description" : "aws-iso-e global region"
-      },
-      "eu-isoe-west-1" : {
-        "description" : "EU ISOE West"
-      }
-    }
+    "regions" : { }
   }, {
     "id" : "aws-iso-f",
     "outputs" : {
       "dnsSuffix" : "csp.hci.ic.gov",
-      "dualStackDnsSuffix" : "api.aws.hci.ic.gov",
-      "implicitGlobalRegion" : "us-isof-south-1",
+      "dualStackDnsSuffix" : "csp.hci.ic.gov",
       "name" : "aws-iso-f",
-      "supportsDualStack" : true,
+      "supportsDualStack" : false,
       "supportsFIPS" : true
     },
     "regionRegex" : "^us\\-isof\\-\\w+\\-\\d+$",
-    "regions" : {
-      "aws-iso-f-global" : {
-        "description" : "aws-iso-f global region"
-      },
-      "us-isof-east-1" : {
-        "description" : "US ISOF EAST"
-      },
-      "us-isof-south-1" : {
-        "description" : "US ISOF SOUTH"
-      }
-    }
-  }, {
-    "id" : "aws-us-gov",
-    "outputs" : {
-      "dnsSuffix" : "amazonaws.com",
-      "dualStackDnsSuffix" : "api.aws",
-      "implicitGlobalRegion" : "us-gov-west-1",
-      "name" : "aws-us-gov",
-      "supportsDualStack" : true,
-      "supportsFIPS" : true
-    },
-    "regionRegex" : "^us\\-gov\\-\\w+\\-\\d+$",
-    "regions" : {
-      "aws-us-gov-global" : {
-        "description" : "aws-us-gov global region"
-      },
-      "us-gov-east-1" : {
-        "description" : "AWS GovCloud (US-East)"
-      },
-      "us-gov-west-1" : {
-        "description" : "AWS GovCloud (US-West)"
-      }
-    }
+    "regions" : { }
   } ],
   "version" : "1.1"
 }

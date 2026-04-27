@@ -159,10 +159,6 @@ func (cg *CGroups2) CPUQuota() (float64, bool, error) {
 			if err != nil {
 				return -1, false, err
 			}
-
-			if period == 0 {
-				return -1, false, errors.New("zero value for period is not allowed")
-			}
 		}
 
 		return float64(max) / float64(period), true, nil

@@ -18,6 +18,7 @@ package test
 
 import (
 	"os"
+	"regexp"
 	"runtime"
 	"testing"
 
@@ -25,8 +26,9 @@ import (
 )
 
 var (
-	imageNames    = initImageNames()
-	excludedTests = initExcludedTests()
+	imageNames      = initImageNames()
+	excludedTests   = initExcludedTests()
+	imagesMappingRE map[*regexp.Regexp][]byte
 )
 
 const (
@@ -39,6 +41,10 @@ const (
 	// dockerize image
 	dockerizeImage
 )
+
+func init() {
+	imagesMappingRE = getImagesMappingRE()
+}
 
 // getTestArch returns architecture of the cluster where test suites will be executed.
 // default value is similar to build architecture, TEST_RUNTIME_ARCH is used when test target cluster has another architecture
@@ -55,35 +61,82 @@ func initImageNames() map[int]string {
 	switch getTestArch() {
 	case "s390x":
 		return map[int]string{
-			busyboxImage:   "mirror.gcr.io/busybox@sha256:2f9af5cf39068ec3a9e124feceaa11910c511e23a1670dcfdff0bc16793545fb",
-			registryImage:  "mirror.gcr.io/ibmcom/registry:2.6.2.5",
+			busyboxImage:   "busybox@sha256:4f47c01fa91355af2865ac10fef5bf6ec9c7f42ad2321377c21e844427972977",
+			registryImage:  "ibmcom/registry:2.6.2.5",
 			kanikoImage:    "gcr.io/kaniko-project/executor:s390x-9ed158c1f63a059cde4fd5f8b95af51d452d9aa7",
-			dockerizeImage: "mirror.gcr.io/ibmcom/dockerize-s390x",
+			dockerizeImage: "ibmcom/dockerize-s390x",
 		}
 	case "ppc64le":
 		return map[int]string{
-			busyboxImage:   "mirror.gcr.io/busybox@sha256:2f9af5cf39068ec3a9e124feceaa11910c511e23a1670dcfdff0bc16793545fb",
-			registryImage:  "mirror.gcr.io/ppc64le/registry:2",
-			kanikoImage:    "mirror.gcr.io/ibmcom/kaniko-project-executor-ppc64le:v0.17.1",
-			dockerizeImage: "mirror.gcr.io/ibmcom/dockerize-ppc64le",
+			busyboxImage:   "busybox@sha256:4f47c01fa91355af2865ac10fef5bf6ec9c7f42ad2321377c21e844427972977",
+			registryImage:  "ppc64le/registry:2",
+			kanikoImage:    "ibmcom/kaniko-project-executor-ppc64le:v0.17.1",
+			dockerizeImage: "ibmcom/dockerize-ppc64le",
 		}
 	default:
 		return map[int]string{
-			busyboxImage:   "mirror.gcr.io/busybox@sha256:2f9af5cf39068ec3a9e124feceaa11910c511e23a1670dcfdff0bc16793545fb",
-			registryImage:  "mirror.gcr.io/library/registry",
+			busyboxImage:   "busybox@sha256:895ab622e92e18d6b461d671081757af7dbaa3b00e3e28e12505af7817f73649",
+			registryImage:  "registry",
 			kanikoImage:    "gcr.io/kaniko-project/executor:v1.3.0",
-			dockerizeImage: "mirror.gcr.io/jwilder/dockerize",
+			dockerizeImage: "jwilder/dockerize",
 		}
 	}
 }
 
+// getImagesMappingRE generates the map ready to search and replace image names with regexp for examples files.
+// search is done using "image: <name>" pattern.
+func getImagesMappingRE() map[*regexp.Regexp][]byte {
+	imageNamesMapping := imageNamesMapping()
+	imageMappingRE := make(map[*regexp.Regexp][]byte, len(imageNamesMapping))
+
+	for existingImage, archSpecificImage := range imageNamesMapping {
+		imageMappingRE[regexp.MustCompile("(?im)image: "+existingImage+"$")] = []byte("image: " + archSpecificImage)
+		imageMappingRE[regexp.MustCompile("(?im)default: "+existingImage+"$")] = []byte("default: " + archSpecificImage)
+	}
+
+	return imageMappingRE
+}
+
+// imageNamesMapping provides mapping between image name in the examples yaml files and desired image name for specific arch.
+// by default empty map is returned.
+func imageNamesMapping() map[string]string {
+
+	switch getTestArch() {
+	case "s390x":
+		return map[string]string{
+			"registry":                              getTestImage(registryImage),
+			"node":                                  "node:alpine3.11",
+			"gcr.io/cloud-builders/git":             "alpine/git:latest",
+			"docker:dind":                           "ibmcom/docker-s390x:20.10",
+			"docker":                                "docker:18.06.3",
+			"mikefarah/yq:3":                        "danielxlee/yq:2.4.0",
+			"stedolan/jq":                           "ibmcom/jq-s390x:latest",
+			"amd64/ubuntu":                          "s390x/ubuntu",
+			"gcr.io/kaniko-project/executor:v1.3.0": getTestImage(kanikoImage),
+		}
+	case "ppc64le":
+		return map[string]string{
+			"registry":                              getTestImage(registryImage),
+			"node":                                  "node:alpine3.11",
+			"gcr.io/cloud-builders/git":             "alpine/git:latest",
+			"docker:dind":                           "ibmcom/docker-ppc64le:19.03-dind",
+			"docker":                                "docker:18.06.3",
+			"mikefarah/yq:3":                        "danielxlee/yq:2.4.0",
+			"stedolan/jq":                           "ibmcom/jq-ppc64le:latest",
+			"gcr.io/kaniko-project/executor:v1.3.0": getTestImage(kanikoImage),
+		}
+
+	}
+
+	return make(map[string]string)
+}
+
 // initExcludedTests provides list of excluded tests for e2e and exanples tests
 func initExcludedTests() sets.String {
+
 	switch getTestArch() {
 	case "s390x":
 		return sets.NewString(
-			// Git resolver test using local Gitea instance
-			"TestGitResolver_API",
 			// examples
 			"TestExamples/v1alpha1/taskruns/gcs-resource",
 			"TestExamples/v1beta1/taskruns/gcs-resource",
@@ -91,8 +144,6 @@ func initExcludedTests() sets.String {
 		)
 	case "ppc64le":
 		return sets.NewString(
-			// Git resolver test using local Gitea instance
-			"TestGitResolver_API",
 			// examples
 			"TestExamples/v1alpha1/taskruns/gcs-resource",
 			"TestExamples/v1beta1/taskruns/gcs-resource",
@@ -109,7 +160,6 @@ func getTestImage(image int) string {
 
 // skipIfExcluded checks if test name is in the excluded list and skip it
 func skipIfExcluded(t *testing.T) {
-	t.Helper()
 	if excludedTests.Has(t.Name()) {
 		t.Skipf("skip for %s architecture", getTestArch())
 	}

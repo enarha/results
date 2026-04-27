@@ -1,5 +1,16 @@
 // Copyright The OpenTelemetry Authors
-// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package attribute // import "go.opentelemetry.io/otel/attribute"
 
@@ -15,11 +26,11 @@ type Filter func(KeyValue) bool
 //
 // If keys is empty a deny-all filter is returned.
 func NewAllowKeysFilter(keys ...Key) Filter {
-	if len(keys) == 0 {
-		return func(KeyValue) bool { return false }
+	if len(keys) <= 0 {
+		return func(kv KeyValue) bool { return false }
 	}
 
-	allowed := make(map[Key]struct{}, len(keys))
+	allowed := make(map[Key]struct{})
 	for _, k := range keys {
 		allowed[k] = struct{}{}
 	}
@@ -34,11 +45,11 @@ func NewAllowKeysFilter(keys ...Key) Filter {
 //
 // If keys is empty an allow-all filter is returned.
 func NewDenyKeysFilter(keys ...Key) Filter {
-	if len(keys) == 0 {
-		return func(KeyValue) bool { return true }
+	if len(keys) <= 0 {
+		return func(kv KeyValue) bool { return true }
 	}
 
-	forbid := make(map[Key]struct{}, len(keys))
+	forbid := make(map[Key]struct{})
 	for _, k := range keys {
 		forbid[k] = struct{}{}
 	}

@@ -19,7 +19,7 @@ package test
 import (
 	"context"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -45,7 +45,7 @@ func getContainersLogsFromPod(ctx context.Context, c kubernetes.Interface, pod, 
 
 	sb := strings.Builder{}
 	for _, container := range p.Spec.Containers {
-		sb.WriteString(fmt.Sprintf("\n>>> Pod %s Container %s:\n", p.Name, container.Name))
+		sb.WriteString(fmt.Sprintf("\n>>> Container %s:\n", container.Name))
 		logs, err := getContainerLogsFromPod(ctx, c, pod, container.Name, namespace)
 		if err != nil {
 			return "", err
@@ -65,7 +65,7 @@ func getContainerLogsFromPod(ctx context.Context, c kubernetes.Interface, pod, c
 	if err != nil {
 		return "", err
 	}
-	bs, err := io.ReadAll(rc)
+	bs, err := ioutil.ReadAll(rc)
 	if err != nil {
 		return "", err
 	}

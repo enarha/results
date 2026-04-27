@@ -27,7 +27,6 @@ type Style struct {
 	bg    Color
 	attrs AttrMask
 	url   string
-	urlId string
 }
 
 // StyleDefault represents a default style, based upon the context.
@@ -45,7 +44,6 @@ func (s Style) Foreground(c Color) Style {
 		bg:    s.bg,
 		attrs: s.attrs,
 		url:   s.url,
-		urlId: s.urlId,
 	}
 }
 
@@ -57,7 +55,6 @@ func (s Style) Background(c Color) Style {
 		bg:    c,
 		attrs: s.attrs,
 		url:   s.url,
-		urlId: s.urlId,
 	}
 }
 
@@ -74,7 +71,6 @@ func (s Style) setAttrs(attrs AttrMask, on bool) Style {
 			bg:    s.bg,
 			attrs: s.attrs | attrs,
 			url:   s.url,
-			urlId: s.urlId,
 		}
 	}
 	return Style{
@@ -82,7 +78,6 @@ func (s Style) setAttrs(attrs AttrMask, on bool) Style {
 		bg:    s.bg,
 		attrs: s.attrs &^ attrs,
 		url:   s.url,
-		urlId: s.urlId,
 	}
 }
 
@@ -144,7 +139,6 @@ func (s Style) Attributes(attrs AttrMask) Style {
 		bg:    s.bg,
 		attrs: attrs,
 		url:   s.url,
-		urlId: s.urlId,
 	}
 }
 
@@ -157,20 +151,5 @@ func (s Style) Url(url string) Style {
 		bg:    s.bg,
 		attrs: s.attrs,
 		url:   url,
-		urlId: s.urlId,
-	}
-}
-
-// UrlId returns a style with the UrlId set. If the provided UrlId is not empty,
-// any marked up Url with this style will be given the UrlId also. If the
-// terminal supports it, any text with the same UrlId will be grouped as if it
-// were one Url, even if it spans multiple lines.
-func (s Style) UrlId(id string) Style {
-	return Style{
-		fg:    s.fg,
-		bg:    s.bg,
-		attrs: s.attrs,
-		url:   s.url,
-		urlId: "id=" + id,
 	}
 }

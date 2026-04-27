@@ -22,8 +22,8 @@ const (
 	// GroupName is the Kubernetes resource group name for Pipeline types.
 	GroupName = "tekton.dev"
 
-	// StepActionLabelKey is used as the label identifier for a StepAction
-	StepActionLabelKey = GroupName + "/stepAction"
+	// ClusterTaskLabelKey is used as the label identifier for a ClusterTask
+	ClusterTaskLabelKey = GroupName + "/clusterTask"
 
 	// TaskLabelKey is used as the label identifier for a Task
 	TaskLabelKey = GroupName + "/task"
@@ -31,17 +31,11 @@ const (
 	// TaskRunLabelKey is used as the label identifier for a TaskRun
 	TaskRunLabelKey = GroupName + "/taskRun"
 
-	// TaskRunLabelKey is used as the label identifier for a TaskRun
-	TaskRunUIDLabelKey = GroupName + "/taskRunUID"
-
 	// PipelineLabelKey is used as the label identifier for a Pipeline
 	PipelineLabelKey = GroupName + "/pipeline"
 
 	// PipelineRunLabelKey is used as the label identifier for a PipelineRun
 	PipelineRunLabelKey = GroupName + "/pipelineRun"
-
-	// PipelineRunLabelKey is used as the label identifier for a PipelineRun
-	PipelineRunUIDLabelKey = GroupName + "/pipelineRunUID"
 
 	// PipelineTaskLabelKey is used as the label identifier for a PipelineTask
 	PipelineTaskLabelKey = GroupName + "/pipelineTask"
@@ -49,28 +43,21 @@ const (
 	// RunKey is used as the label identifier for a Run
 	RunKey = GroupName + "/run"
 
-	// CustomRunKey is used as the label identifier for a CustomRun
-	CustomRunKey = GroupName + "/customRun"
-
 	// MemberOfLabelKey is used as the label identifier for a PipelineTask
 	// Set to Tasks/Finally depending on the position of the PipelineTask
 	MemberOfLabelKey = GroupName + "/memberOf"
-
-	// ManagedBy is the value of the "managedBy" field for resources
-	// managed by the Tekton Pipeline controller.
-	ManagedBy = GroupName + "/pipeline"
 )
 
 var (
-	// StepActionResource represents a Tekton StepAction
-	StepActionResource = schema.GroupResource{
-		Group:    GroupName,
-		Resource: "stepactions",
-	}
 	// TaskResource represents a Tekton Task
 	TaskResource = schema.GroupResource{
 		Group:    GroupName,
 		Resource: "tasks",
+	}
+	// ClusterTaskResource represents a Tekton ClusterTask
+	ClusterTaskResource = schema.GroupResource{
+		Group:    GroupName,
+		Resource: "clustertasks",
 	}
 	// TaskRunResource represents a Tekton TaskRun
 	TaskRunResource = schema.GroupResource{
@@ -93,9 +80,9 @@ var (
 		Resource: "pipelineruns",
 	}
 
-	// CustomRunResource represents a Tekton CustomRun
-	CustomRunResource = schema.GroupResource{
+	// PipelineResourceResource represents a Tekton PipelineResource
+	PipelineResourceResource = schema.GroupResource{
 		Group:    GroupName,
-		Resource: "customruns",
+		Resource: "pipelineresources",
 	}
 )

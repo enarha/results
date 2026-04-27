@@ -15,57 +15,66 @@
 package pipeline
 
 import (
-	"context"
 	"fmt"
+	"os"
 
 	"github.com/tektoncd/cli/pkg/actions"
 	"github.com/tektoncd/cli/pkg/cli"
-	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var pipelineGroupResource = schema.GroupVersionResource{Group: "tekton.dev", Resource: "pipelines"}
-var pipelineRunGroupResource = schema.GroupVersionResource{Group: "tekton.dev", Resource: "pipelineruns"}
 
-func GetAllPipelineNames(gr schema.GroupVersionResource, c *cli.Clients, ns string) ([]string, error) {
-	var pipelines *v1.PipelineList
-	if err := actions.ListV1(gr, c, metav1.ListOptions{}, ns, &pipelines); err != nil {
-		return nil, fmt.Errorf("failed to list Tasks from namespace %s: %v", ns, err)
+func GetAllPipelineNames(p cli.Params) ([]string, error) {
+	cs, err := p.Clients()
+	if err != nil {
+		return nil, err
+	}
+
+	ps, err := List(cs, metav1.ListOptions{}, p.Namespace())
+	if err != nil {
+		return nil, err
 	}
 
 	ret := []string{}
-	for _, item := range pipelines.Items {
+	for _, item := range ps.Items {
 		ret = append(ret, item.ObjectMeta.Name)
 	}
 	return ret, nil
 }
 
-func GetPipeline(gr schema.GroupVersionResource, c *cli.Clients, pName, ns string) (*v1.Pipeline, error) {
-	var pipeline v1.Pipeline
-	gvr, err := actions.GetGroupVersionResource(gr, c.Tekton.Discovery())
+func List(c *cli.Clients, opts metav1.ListOptions, ns string) (*v1beta1.PipelineList, error) {
+	unstructuredP, err := actions.List(pipelineGroupResource, c.Dynamic, c.Tekton.Discovery(), ns, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	if gvr.Version == "v1" {
-		err := actions.GetV1(gr, c, pName, ns, metav1.GetOptions{}, &pipeline)
-		if err != nil {
-			return nil, err
-		}
-		return &pipeline, nil
-
+	var pipelines *v1beta1.PipelineList
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredP.UnstructuredContent(), &pipelines); err != nil {
+		return nil, err
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to list pipelines from %s namespace \n", ns)
+		return nil, err
 	}
 
-	var pipelineV1beta1 v1beta1.Pipeline
-	err = actions.GetV1(gr, c, pName, ns, metav1.GetOptions{}, &pipelineV1beta1)
+	return pipelines, nil
+}
+
+// Get will fetch the pipeline resource based on pipeline name
+func Get(c *cli.Clients, pipelinename string, opts metav1.GetOptions, ns string) (*v1beta1.Pipeline, error) {
+	unstructuredP, err := actions.Get(pipelineGroupResource, c.Dynamic, c.Tekton.Discovery(), pipelinename, ns, opts)
 	if err != nil {
 		return nil, err
 	}
-	err = pipelineV1beta1.ConvertTo(context.Background(), &pipeline)
-	if err != nil {
+
+	var pipeline *v1beta1.Pipeline
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredP.UnstructuredContent(), &pipeline); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get pipeline from %s namespace \n", ns)
 		return nil, err
 	}
-	return &pipeline, nil
+	return pipeline, nil
 }

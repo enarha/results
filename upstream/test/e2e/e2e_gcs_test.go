@@ -21,10 +21,9 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"testing"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"testing"
 
 	resultsv1alpha2 "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"google.golang.org/genproto/googleapis/api/httpbody"
@@ -34,7 +33,7 @@ import (
 
 	"os"
 
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/yaml"
@@ -69,7 +68,7 @@ func TestGCSLog(t *testing.T) {
 
 	t.Run("check log annotation", func(t *testing.T) {
 		// Wait for Result ID to show up.
-		if err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 1*time.Minute, true, func(ctx context.Context) (done bool, err error) {
+		if err := wait.PollImmediate(1*time.Second, 1*time.Minute, func() (done bool, err error) {
 			pr, err := tc.PipelineRuns(defaultNamespace).Get(ctx, pr.GetName(), metav1.GetOptions{})
 			if err != nil {
 				t.Fatalf("Error getting PipelineRun: %v", err)
@@ -103,8 +102,8 @@ func TestGCSLog(t *testing.T) {
 		if logName == "" {
 			t.Skip("log name not found")
 		}
-		if err := wait.PollUntilContextTimeout(ctx, 1*time.Second, 10*time.Second, true, func(ctx context.Context) (done bool, err error) {
-			logClient, err := gc.GetLog(ctx, &resultsv1alpha2.GetLogRequest{Name: logName})
+		if err := wait.PollImmediate(1*time.Second, 10*time.Second, func() (done bool, err error) {
+			logClient, err := gc.GetLog(context.Background(), &resultsv1alpha2.GetLogRequest{Name: logName})
 			if err != nil {
 				t.Logf("Error getting Log Client: %v", err)
 				return false, nil

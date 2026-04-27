@@ -21,7 +21,7 @@ import (
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/auth"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/log"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/record"
-	"github.com/tektoncd/results/pkg/apis/v1alpha3"
+	"github.com/tektoncd/results/pkg/apis/v1alpha2"
 	"github.com/tektoncd/results/pkg/logs"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -47,7 +47,7 @@ func (s *Server) GetLog(req *pb.GetLogRequest, srv pb.Logs_GetLogServer) error {
 		return err
 	}
 	// Check if the input record is referenced in any logs record in the result
-	if rec.Type != v1alpha3.LogRecordType && rec.Type != v1alpha3.LogRecordTypeV2 {
+	if rec.Type != v1alpha2.LogRecordType {
 		rec, err = getLogRecord(s.db, parent, res, name)
 		if err != nil {
 			s.logger.Error(err)
@@ -60,20 +60,9 @@ func (s *Server) GetLog(req *pb.GetLogRequest, srv pb.Logs_GetLogServer) error {
 		s.logger.Error(err)
 		return status.Error(codes.Internal, "Error streaming log")
 	}
-
-	// Handle v1alpha2 and earlier differently from v1alpha3 until v1alpha2 and earlier are deprecated
-	if object.APIVersion == "results.tekton.dev/v1alpha3" {
-		if !object.Status.IsStored || object.Status.Size == 0 {
-			s.logger.Errorf("no logs exist for %s", req.GetName())
-			return status.Error(codes.NotFound, "Log doesn't exist")
-		}
-	} else {
-		// For v1alpha2 checking log size is the best way to ensure if logs are stored
-		// this is however susceptible to race condition
-		if object.Status.Size == 0 {
-			s.logger.Errorf("no logs exist for %s", req.GetName())
-			return status.Error(codes.NotFound, "Log doesn't exist")
-		}
+	if object.Status.Size == 0 {
+		s.logger.Errorf("no logs exist for %s", req.GetName())
+		return status.Error(codes.NotFound, "Log doesn't exist")
 	}
 
 	writer := logs.NewBufferedHTTPWriter(srv, req.GetName(), s.config.LOGS_BUFFER_SIZE)
@@ -106,17 +95,28 @@ func (s *Server) UpdateLog(srv pb.Logs_UpdateLogServer) error {
 	var name, parent, resultName, recordName string
 	var bytesWritten int64
 	var rec *db.Record
-	var object *v1alpha3.Log
+	var object *v1alpha2.Log
 	var stream log.Stream
-	// fyi we cannot defer the flush call in case we need to return the error
-	// but instead we pass the stream into handleError to preserve the behavior of
-	// calling Flush regardless when we previously called Flush via defer
+	defer func() {
+		if stream != nil {
+			if err := stream.Flush(); err != nil {
+				s.logger.Error(err)
+			}
+		}
+	}()
 	for {
 		// the underlying grpc stream RecvMsg method blocks until this receives a message or it is done,
+		// with the client now setting a context deadline, if a timeout occurs, that should make this done/canceled; let's check to confirm
+		deadline, ok := srv.Context().Deadline()
+		if !ok {
+			s.logger.Warnf("UpdateLog called with no deadline: %#v", srv)
+		} else {
+			s.logger.Infof("UpdateLog called with deadline: %s for %#v", deadline.String(), srv)
+		}
 		recv, err := srv.Recv()
 		// If we reach the end of the srv, we receive an io.EOF error
 		if err != nil {
-			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
+			return s.handleReturn(srv, rec, object, bytesWritten, err)
 		}
 		// Ensure that we are receiving logs for the same record
 		if name == "" {
@@ -124,86 +124,62 @@ func (s *Server) UpdateLog(srv pb.Logs_UpdateLogServer) error {
 			s.logger.Debugf("receiving logs for %s", name)
 			parent, resultName, recordName, err = log.ParseName(name)
 			if err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
+				return s.handleReturn(srv, rec, object, bytesWritten, err)
 			}
 
-			if err = s.auth.Check(srv.Context(), parent, auth.ResourceLogs, auth.PermissionUpdate); err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, false)
+			if err := s.auth.Check(srv.Context(), parent, auth.ResourceLogs, auth.PermissionUpdate); err != nil {
+				return s.handleReturn(srv, rec, object, bytesWritten, err)
 			}
 		}
 		if name != recv.GetName() {
-			err = fmt.Errorf("cannot put logs for multiple records in the same server")
+			err := fmt.Errorf("cannot put logs for multiple records in the same server")
 			return s.handleReturn(srv,
 				rec,
 				object,
 				bytesWritten,
-				stream,
-				err,
-				false)
+				err)
 		}
 
 		if rec == nil {
 			rec, err = getRecord(s.db.WithContext(srv.Context()), parent, resultName, recordName)
 			if err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
+				return s.handleReturn(srv, rec, object, bytesWritten, err)
 			}
 		}
 
 		if stream == nil {
 			stream, object, err = log.ToStream(srv.Context(), rec, s.config)
 			if err != nil {
-				return s.handleReturn(srv, rec, object, bytesWritten, stream, err, false)
+				return s.handleReturn(srv, rec, object, bytesWritten, err)
 			}
 		}
 
 		buffer := bytes.NewBuffer(recv.GetData())
-		var written int64
-		written, err = stream.ReadFrom(buffer)
+		written, err := stream.ReadFrom(buffer)
 		bytesWritten += written
 
 		if err != nil {
-			return s.handleReturn(srv, rec, object, bytesWritten, stream, err, true)
+			return s.handleReturn(srv, rec, object, bytesWritten, err)
 		}
 	}
 }
 
-func (s *Server) handleReturn(srv pb.Logs_UpdateLogServer, rec *db.Record, log *v1alpha3.Log, written int64, stream log.Stream, returnErr error, isRetryableErr bool) error {
+func (s *Server) handleReturn(srv pb.Logs_UpdateLogServer, rec *db.Record, log *v1alpha2.Log, written int64, returnErr error) error {
 	// When the srv reaches the end, srv.Recv() returns an io.EOF error
 	// Therefore we should not return io.EOF if it is received in this function.
 	// Otherwise, we should return the original error and not mask any subsequent errors handling cleanup/return.
 
-	returnErrorStr := ""
-	if returnErr != nil {
-		returnErrorStr = returnErr.Error()
-	}
-
 	// If no database record or Log, return the original error
 	if rec == nil || log == nil {
-		if stream != nil {
-			if flushErr := stream.Flush(); flushErr != nil {
-				s.logger.Error(flushErr)
-				return fmt.Errorf("got flush error %s with returnErr: %s", flushErr.Error(), returnErrorStr)
-			}
-		}
 		return returnErr
 	}
 	apiRec := record.ToAPI(rec)
 	apiRec.UpdateTime = timestamppb.Now()
-	log.Status.Size = written
-	log.Status.IsStored = returnErr == io.EOF
-	if returnErr != nil && returnErr != io.EOF {
-		log.Status.ErrorOnStoreMsg = returnErr.Error()
-		log.Status.IsRetryableErr = isRetryableErr
+	if written > 0 {
+		log.Status.Size = written
 	}
-
 	data, err := json.Marshal(log)
 	if err != nil {
-		if stream != nil {
-			if flushErr := stream.Flush(); flushErr != nil {
-				s.logger.Error(flushErr)
-				return fmt.Errorf("got flush error %s with returnErr: %s", flushErr.Error(), returnErrorStr)
-			}
-		}
 		if !isNilOrEOF(returnErr) {
 			return returnErr
 		}
@@ -220,12 +196,6 @@ func (s *Server) handleReturn(srv pb.Logs_UpdateLogServer, rec *db.Record, log *
 	})
 
 	if err != nil {
-		if stream != nil {
-			if flushErr := stream.Flush(); flushErr != nil {
-				s.logger.Error(flushErr)
-				return fmt.Errorf("got flush error %s with returnErr: %s", flushErr.Error(), returnErrorStr)
-			}
-		}
 		if !isNilOrEOF(returnErr) {
 			return returnErr
 		}
@@ -233,23 +203,11 @@ func (s *Server) handleReturn(srv pb.Logs_UpdateLogServer, rec *db.Record, log *
 	}
 
 	if returnErr == io.EOF {
-		if stream != nil {
-			if flushErr := stream.Flush(); flushErr != nil {
-				s.logger.Error(flushErr)
-				return flushErr
-			}
-		}
 		s.logger.Debugf("received %d bytes for %s", written, apiRec.GetName())
 		return srv.SendAndClose(&pb.LogSummary{
 			Record:        apiRec.Name,
 			BytesReceived: written,
 		})
-	}
-	if stream != nil {
-		if flushErr := stream.Flush(); flushErr != nil {
-			s.logger.Error(flushErr)
-			return fmt.Errorf("got flush error %s with returnErr: %s", flushErr.Error(), returnErrorStr)
-		}
 	}
 	return returnErr
 }
@@ -336,7 +294,7 @@ func (s *Server) getFilteredPaginatedSortedLogRecords(ctx context.Context, paren
 	for len(rec) < pageSize {
 		batchSize := batcher.Next()
 		dbrecords := make([]*db.Record, 0, batchSize)
-		q := s.db.WithContext(ctx).Where("type = ?", v1alpha3.LogRecordType)
+		q := s.db.WithContext(ctx).Where("type = ?", v1alpha2.LogRecordType)
 		q = q.Where("id > ?", start)
 		// Specifying `-` allows users to read Records across Results.
 		// See https://google.aip.dev/159 for more details.
@@ -406,7 +364,7 @@ func (s *Server) DeleteLog(ctx context.Context, req *pb.DeleteLogRequest) (*empt
 		return &empty.Empty{}, err
 	}
 	// Check if the input record is referenced in any logs record
-	if rec.Type != v1alpha3.LogRecordType {
+	if rec.Type != v1alpha2.LogRecordType {
 		rec, err = getLogRecord(s.db, parent, res, name)
 		if err != nil {
 			return &empty.Empty{}, err

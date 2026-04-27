@@ -1,7 +1,6 @@
-//go:build plan9 || windows
-// +build plan9 windows
+// +build js plan9 windows
 
-// Copyright 2022 The TCell Authors
+// Copyright 2021 The TCell Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -22,11 +21,5 @@ package tcell
 // that we can obtain with the console API present on Windows.
 
 func (t *tScreen) initialize() error {
-	if t.tty == nil {
-		return ErrNoScreen
-	}
-	// If a tty was supplied (custom), it should work.
-	// Custom screen implementations will need to provide a TTY
-	// implementation that we can use.
-	return nil
+	return ErrNoScreen
 }

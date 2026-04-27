@@ -18,48 +18,39 @@ import (
 	"fmt"
 	"strings"
 
-	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 )
 
 // Param returns params with their values. If user value is not defined then returns default value,
 // if default value is not defined then returns param's type
-func Param(params []v1.Param, paramSpec []v1.ParamSpec) string {
+func Param(params []v1beta1.Param, paramSpec []v1beta1.ParamSpec) string {
 	if len(params) == 0 {
 		return "---"
 	}
 	var str string
 	for i, param := range params {
-		paramValue := ""
-		switch param.Value.Type {
-		case "string":
-			paramValue = CheckParamDefaultValue(param.Value.StringVal, paramSpec)
-		case "array":
-			paramValue = "["
+		if param.Value.Type == "string" {
+			paramValue := CheckParamDefaultValue(param.Value.StringVal, paramSpec)
+			if i == len(params)-1 {
+				str += fmt.Sprintf("%s: %s", param.Name, paramValue)
+			} else {
+				str += fmt.Sprintf("%s: %s, ", param.Name, paramValue)
+			}
+		} else {
+			paramValues := " ["
 			for j, pv := range param.Value.ArrayVal {
 				pv = CheckParamDefaultValue(pv, paramSpec)
 				if j == len(param.Value.ArrayVal)-1 {
-					paramValue += " " + pv + " ]"
+					paramValues += " " + pv + " ]"
 				} else {
-					paramValue += " " + pv + ","
+					paramValues += " " + pv + ","
 				}
 			}
-		default:
-			paramValue = "{"
-			j := 0
-			for k, v := range param.Value.ObjectVal {
-				pv := CheckParamDefaultValue(v, paramSpec)
-				if j == len(param.Value.ObjectVal)-1 {
-					paramValue += fmt.Sprintf(" %s: %s }", k, pv)
-				} else {
-					paramValue += fmt.Sprintf(" %s: %s ,", k, pv)
-				}
-				j++
+			if i == len(params)-1 {
+				str += fmt.Sprintf("%s:%s", param.Name, paramValues)
+			} else {
+				str += fmt.Sprintf("%s:%s, ", param.Name, paramValues)
 			}
-		}
-		if i == len(params)-1 {
-			str += fmt.Sprintf("%s: %s", param.Name, paramValue)
-		} else {
-			str += fmt.Sprintf("%s: %s, ", param.Name, paramValue)
 		}
 	}
 	return str
@@ -67,7 +58,7 @@ func Param(params []v1.Param, paramSpec []v1.ParamSpec) string {
 
 // CheckParamDefaultValue returns param's value if defined, if not then checks for default value
 // If default value is not defined then returns param's type
-func CheckParamDefaultValue(param string, paramSpec []v1.ParamSpec) string {
+func CheckParamDefaultValue(param string, paramSpec []v1beta1.ParamSpec) string {
 	if strings.ContainsAny(param, "$") {
 		paramValue := ""
 		replacer := strings.NewReplacer("$", "", "(", "", ")", "", "params.", "")
@@ -78,10 +69,9 @@ func CheckParamDefaultValue(param string, paramSpec []v1.ParamSpec) string {
 					paramValue = string(spec.Type)
 					break
 				}
-				switch spec.Default.Type {
-				case "string":
+				if spec.Default.Type == "string" {
 					paramValue = spec.Default.StringVal
-				case "array":
+				} else if spec.Default.Type == "array" {
 					pv := ""
 					for k, val := range spec.Default.ArrayVal {
 						if k == 0 {
@@ -91,17 +81,6 @@ func CheckParamDefaultValue(param string, paramSpec []v1.ParamSpec) string {
 						}
 					}
 					paramValue = pv
-				default:
-					pv := "{"
-					first := true
-					for k, val := range spec.Default.ObjectVal {
-						if !first {
-							pv += ","
-						}
-						pv += k + ":" + val
-						first = false
-					}
-					paramValue = pv + "}"
 				}
 				break
 			}

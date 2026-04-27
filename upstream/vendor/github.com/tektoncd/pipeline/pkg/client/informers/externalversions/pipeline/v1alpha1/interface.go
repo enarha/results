@@ -26,10 +26,6 @@ import (
 type Interface interface {
 	// Runs returns a RunInformer.
 	Runs() RunInformer
-	// StepActions returns a StepActionInformer.
-	StepActions() StepActionInformer
-	// VerificationPolicies returns a VerificationPolicyInformer.
-	VerificationPolicies() VerificationPolicyInformer
 }
 
 type version struct {
@@ -46,14 +42,4 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // Runs returns a RunInformer.
 func (v *version) Runs() RunInformer {
 	return &runInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
-}
-
-// StepActions returns a StepActionInformer.
-func (v *version) StepActions() StepActionInformer {
-	return &stepActionInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
-}
-
-// VerificationPolicies returns a VerificationPolicyInformer.
-func (v *version) VerificationPolicies() VerificationPolicyInformer {
-	return &verificationPolicyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

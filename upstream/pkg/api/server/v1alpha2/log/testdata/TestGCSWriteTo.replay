@@ -1,5 +1,5 @@
 {
-  "Initial": "AQAAAA7eA/CFEgKKsQFK",
+  "Initial": "AQAAAA7cZsvsE0HiRgFK",
   "Version": "0.2",
   "Converter": {
     "ScrubBody": null,
@@ -7,6 +7,7 @@
       "^X-Goog-.*Encryption-Key$",
       "^Expires$",
       "^Signature$",
+      "^X-Goog-Gcs-Idempotency-Token$",
       "^User-Agent$"
     ],
     "RemoveRequestHeaders": [
@@ -36,10 +37,10 @@
   },
   "Entries": [
     {
-      "ID": "f43619a071198f3e",
+      "ID": "8decbb664730f732",
       "Request": {
         "Method": "GET",
-        "URL": "https://storage.googleapis.com/tekton-releases-test-results/foo%2Fbar%2Flog",
+        "URL": "https://storage.googleapis.com/tekton-releases-test-results/foo/bar/log",
         "Header": {
           "Accept-Encoding": [
             "gzip"
@@ -62,9 +63,6 @@
           "Accept-Ranges": [
             "bytes"
           ],
-          "Age": [
-            "377"
-          ],
           "Alt-Svc": [
             "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
           ],
@@ -78,7 +76,7 @@
             "text/plain; charset=utf-8"
           ],
           "Date": [
-            "Tue, 18 Jun 2024 21:11:40 GMT"
+            "Thu, 10 Aug 2023 12:15:41 GMT"
           ],
           "Etag": [
             "\"ce46573380ea22ca76259c2169b858f3\""
@@ -87,13 +85,13 @@
             "CLEARED"
           ],
           "Last-Modified": [
-            "Tue, 18 Jun 2024 21:10:51 GMT"
+            "Thu, 10 Aug 2023 12:15:11 GMT"
           ],
           "Server": [
             "UploadServer"
           ],
           "X-Goog-Generation": [
-            "1718745051457000"
+            "1691669711584395"
           ],
           "X-Goog-Hash": [
             "crc32c=lykcjQ==",
@@ -112,7 +110,7 @@
             "11"
           ],
           "X-Guploader-Uploadid": [
-            "ACJd0NpW8dO2SFu0wX4xZ3ABzCfa_0V8B2mcRZhQ2kuQAtzBgR72E5DAEknRuW8gAy1d9RvunkbMXDVDlA"
+            "ADPycdu25tTzPvvo5t1u2g6eIE4Q-wLH4wnyr-qig6iu0hfFnbCNrnA_tG-0ohE_2ayJxCF78cCJ-8rzlsdo2YcoCNY8FsPkgYoO"
           ]
         },
         "Body": "Zm9vLWJhci1sb2c="

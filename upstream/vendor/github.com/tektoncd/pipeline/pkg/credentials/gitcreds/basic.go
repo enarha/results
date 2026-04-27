@@ -18,13 +18,14 @@ package gitcreds
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/tektoncd/pipeline/pkg/credentials/common"
-	credmatcher "github.com/tektoncd/pipeline/pkg/credentials/matcher"
+	corev1 "k8s.io/api/core/v1"
+
+	"github.com/tektoncd/pipeline/pkg/credentials"
 )
 
 // As the flag is read, this status is populated.
@@ -86,7 +87,7 @@ func (dc *basicGitConfig) Write(directory string) error {
 		gitConfigs = append(gitConfigs, v.configBlurb(k))
 	}
 	gitConfigContent := strings.Join(gitConfigs, "")
-	if err := os.WriteFile(gitConfigPath, []byte(gitConfigContent), 0600); err != nil {
+	if err := ioutil.WriteFile(gitConfigPath, []byte(gitConfigContent), 0600); err != nil {
 		return err
 	}
 
@@ -98,7 +99,7 @@ func (dc *basicGitConfig) Write(directory string) error {
 	}
 	gitCredentials = append(gitCredentials, "") // Get a trailing newline
 	gitCredentialsContent := strings.Join(gitCredentials, "\n")
-	return os.WriteFile(gitCredentialsPath, []byte(gitCredentialsContent), 0600)
+	return ioutil.WriteFile(gitCredentialsPath, []byte(gitCredentialsContent), 0600)
 }
 
 type basicEntry struct {
@@ -121,15 +122,15 @@ func (be *basicEntry) escapedUsername() string {
 }
 
 func newBasicEntry(u, secret string) (*basicEntry, error) {
-	secretPath := credmatcher.VolumeName(secret)
+	secretPath := credentials.VolumeName(secret)
 
-	ub, err := os.ReadFile(filepath.Join(secretPath, common.BasicAuthUsernameKey))
+	ub, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.BasicAuthUsernameKey))
 	if err != nil {
 		return nil, err
 	}
 	username := string(ub)
 
-	pb, err := os.ReadFile(filepath.Join(secretPath, common.BasicAuthPasswordKey))
+	pb, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.BasicAuthPasswordKey))
 	if err != nil {
 		return nil, err
 	}

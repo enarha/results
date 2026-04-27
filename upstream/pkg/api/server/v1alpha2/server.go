@@ -27,7 +27,6 @@ import (
 	resultscel "github.com/tektoncd/results/pkg/api/server/cel"
 	model "github.com/tektoncd/results/pkg/api/server/db"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/auth"
-	"github.com/tektoncd/results/pkg/api/server/v1alpha2/plugin"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"gorm.io/gorm"
 )
@@ -45,14 +44,13 @@ type getResultID func(ctx context.Context, parent, result string) (string, error
 type Server struct {
 	pb.UnimplementedResultsServer
 	pb.UnimplementedLogsServer
-	config          *config.Config
-	logger          *zap.SugaredLogger
-	env             *cel.Env
-	resultsEnv      *cel.Env
-	recordsEnv      *cel.Env
-	db              *gorm.DB
-	auth            auth.Checker
-	LogPluginServer *plugin.LogServer
+	config     *config.Config
+	logger     *zap.SugaredLogger
+	env        *cel.Env
+	resultsEnv *cel.Env
+	recordsEnv *cel.Env
+	db         *gorm.DB
+	auth       auth.Checker
 
 	// testing.
 	getResultID getResultID
@@ -97,12 +95,6 @@ func New(config *config.Config, logger *zap.SugaredLogger, db *gorm.DB, opts ...
 			return nil, fmt.Errorf("error automigrating DB: %w", err)
 		}
 	}
-
-	pluginServer, err := plugin.NewLogServer(srv.config, srv.logger, srv.auth, srv.db)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create log plugin server: %w", err)
-	}
-	srv.LogPluginServer = pluginServer
 
 	return srv, nil
 }

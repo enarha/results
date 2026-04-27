@@ -21,22 +21,21 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/tektoncd/pipeline/pkg/credentials/common"
-	credmatcher "github.com/tektoncd/pipeline/pkg/credentials/matcher"
-	credwriter "github.com/tektoncd/pipeline/pkg/credentials/writer"
+	corev1 "k8s.io/api/core/v1"
+
+	"github.com/tektoncd/pipeline/pkg/credentials"
 )
 
 const annotationPrefix = "tekton.dev/docker-"
 
-var (
-	config       basicDocker
-	dockerConfig arrayArg
-	dockerCfg    arrayArg
-)
+var config basicDocker
+var dockerConfig arrayArg
+var dockerCfg arrayArg
 
 // AddFlags adds CLI flags that dockercreds supports to a given flag.FlagSet.
 func AddFlags(flagSet *flag.FlagSet) {
@@ -118,15 +117,15 @@ type entry struct {
 }
 
 func newEntry(secret string) (*entry, error) {
-	secretPath := credmatcher.VolumeName(secret)
+	secretPath := credentials.VolumeName(secret)
 
-	ub, err := os.ReadFile(filepath.Join(secretPath, common.BasicAuthUsernameKey))
+	ub, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.BasicAuthUsernameKey))
 	if err != nil {
 		return nil, err
 	}
 	username := string(ub)
 
-	pb, err := os.ReadFile(filepath.Join(secretPath, common.BasicAuthPasswordKey))
+	pb, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.BasicAuthPasswordKey))
 	if err != nil {
 		return nil, err
 	}
@@ -144,31 +143,22 @@ func newEntry(secret string) (*entry, error) {
 type basicDockerBuilder struct{}
 
 // NewBuilder returns a new builder for Docker credentials.
-func NewBuilder() interface {
-	credmatcher.Matcher
-	credwriter.Writer
-} {
-	return &basicDockerBuilder{}
-}
+func NewBuilder() credentials.Builder { return &basicDockerBuilder{} }
 
 // MatchingAnnotations extracts flags for the credential helper
 // from the supplied secret and returns a slice (of length 0 or
 // greater) of applicable domains.
-func (*basicDockerBuilder) MatchingAnnotations(secret credmatcher.Secret) []string {
+func (*basicDockerBuilder) MatchingAnnotations(secret *corev1.Secret) []string {
 	var flags []string
-	switch credmatcher.GetSecretType(secret) {
-	case common.SecretTypeBasicAuth:
-		for _, v := range credwriter.SortAnnotations(secret.GetAnnotations(), annotationPrefix) {
-			flags = append(flags, fmt.Sprintf("-basic-docker=%s=%s", secret.GetName(), v))
+	switch secret.Type {
+	case corev1.SecretTypeBasicAuth:
+		for _, v := range credentials.SortAnnotations(secret.Annotations, annotationPrefix) {
+			flags = append(flags, fmt.Sprintf("-basic-docker=%s=%s", secret.Name, v))
 		}
-	case common.SecretTypeDockerConfigJson:
-		flags = append(flags, "-docker-config="+secret.GetName())
-	case common.SecretTypeDockercfg:
-		flags = append(flags, "-docker-cfg="+secret.GetName())
-
-	case common.SecretTypeOpaque, common.SecretTypeServiceAccountToken, common.SecretTypeSSHAuth, common.SecretTypeTLS, common.SecretTypeBootstrapToken:
-		fallthrough
-
+	case corev1.SecretTypeDockerConfigJson:
+		flags = append(flags, fmt.Sprintf("-docker-config=%s", secret.Name))
+	case corev1.SecretTypeDockercfg:
+		flags = append(flags, fmt.Sprintf("-docker-cfg=%s", secret.Name))
 	default:
 		return flags
 	}
@@ -220,13 +210,13 @@ func (*basicDockerBuilder) Write(directory string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(basicDocker, content, 0o600)
+	return ioutil.WriteFile(basicDocker, content, 0600)
 }
 
 func authsFromDockerCfg(secret string) (map[string]entry, error) {
-	secretPath := credmatcher.VolumeName(secret)
+	secretPath := credentials.VolumeName(secret)
 	m := make(map[string]entry)
-	data, err := os.ReadFile(filepath.Join(secretPath, common.DockerConfigKey))
+	data, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.DockerConfigKey))
 	if err != nil {
 		return m, err
 	}
@@ -235,10 +225,10 @@ func authsFromDockerCfg(secret string) (map[string]entry, error) {
 }
 
 func authsFromDockerConfig(secret string) (map[string]entry, error) {
-	secretPath := credmatcher.VolumeName(secret)
+	secretPath := credentials.VolumeName(secret)
 	m := make(map[string]entry)
 	c := configFile{}
-	data, err := os.ReadFile(filepath.Join(secretPath, common.DockerConfigJsonKey))
+	data, err := ioutil.ReadFile(filepath.Join(secretPath, corev1.DockerConfigJsonKey))
 	if err != nil {
 		return m, err
 	}

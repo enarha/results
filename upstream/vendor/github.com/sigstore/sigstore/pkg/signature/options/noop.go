@@ -18,7 +18,6 @@ package options
 import (
 	"context"
 	"crypto"
-	"crypto/rsa"
 	"io"
 )
 
@@ -26,34 +25,25 @@ import (
 type NoOpOptionImpl struct{}
 
 // ApplyContext is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyContext(_ *context.Context) {}
+func (NoOpOptionImpl) ApplyContext(ctx *context.Context) {}
 
 // ApplyCryptoSignerOpts is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyCryptoSignerOpts(_ *crypto.SignerOpts) {}
+func (NoOpOptionImpl) ApplyCryptoSignerOpts(opts *crypto.SignerOpts) {}
 
 // ApplyDigest is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyDigest(_ *[]byte) {}
+func (NoOpOptionImpl) ApplyDigest(digest *[]byte) {}
 
 // ApplyRand is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyRand(_ *io.Reader) {}
+func (NoOpOptionImpl) ApplyRand(rand *io.Reader) {}
 
 // ApplyRemoteVerification is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyRemoteVerification(_ *bool) {}
+func (NoOpOptionImpl) ApplyRemoteVerification(remoteVerification *bool) {}
 
 // ApplyRPCAuthOpts is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyRPCAuthOpts(_ *RPCAuth) {}
+func (NoOpOptionImpl) ApplyRPCAuthOpts(opts *RPCAuth) {}
 
 // ApplyKeyVersion is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyKeyVersion(_ *string) {}
+func (NoOpOptionImpl) ApplyKeyVersion(keyVersion *string) {}
 
 // ApplyKeyVersionUsed is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyKeyVersionUsed(_ **string) {}
-
-// ApplyHash is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyHash(_ *crypto.Hash) {}
-
-// ApplyED25519ph is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyED25519ph(_ *bool) {}
-
-// ApplyRSAPSS is a no-op required to fully implement the requisite interfaces
-func (NoOpOptionImpl) ApplyRSAPSS(_ **rsa.PSSOptions) {}
+func (NoOpOptionImpl) ApplyKeyVersionUsed(keyVersion **string) {}

@@ -18,25 +18,18 @@ package pod
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/tektoncd/pipeline/pkg/apis/config"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline"
+	"github.com/tektoncd/pipeline/pkg/credentials"
 	"github.com/tektoncd/pipeline/pkg/credentials/dockercreds"
 	"github.com/tektoncd/pipeline/pkg/credentials/gitcreds"
-	credmatcher "github.com/tektoncd/pipeline/pkg/credentials/matcher"
-	credwriter "github.com/tektoncd/pipeline/pkg/credentials/writer"
 	"github.com/tektoncd/pipeline/pkg/names"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"knative.dev/pkg/controller"
-	"knative.dev/pkg/logging"
 )
 
 const (
@@ -57,8 +50,7 @@ var dnsLabel1123Forbidden = regexp.MustCompile("[^a-zA-Z0-9-]+")
 // Any errors encountered during this process are returned to the
 // caller. If no matching annotated secrets are found, nil lists with a
 // nil error are returned.
-func credsInit(ctx context.Context, obj runtime.Object, serviceAccountName, namespace string, kubeclient kubernetes.Interface) ([]string, []corev1.Volume, []corev1.VolumeMount, error) {
-	logger := logging.FromContext(ctx)
+func credsInit(ctx context.Context, serviceAccountName, namespace string, kubeclient kubernetes.Interface) ([]string, []corev1.Volume, []corev1.VolumeMount, error) {
 	cfg := config.FromContextOrDefaults(ctx)
 	if cfg != nil && cfg.FeatureFlags != nil && cfg.FeatureFlags.DisableCredsInit {
 		return nil, nil, nil, nil
@@ -75,25 +67,11 @@ func credsInit(ctx context.Context, obj runtime.Object, serviceAccountName, name
 		return nil, nil, nil, err
 	}
 
-	builders := []interface {
-		credmatcher.Matcher
-		credwriter.Writer
-	}{dockercreds.NewBuilder(), gitcreds.NewBuilder()}
+	builders := []credentials.Builder{dockercreds.NewBuilder(), gitcreds.NewBuilder()}
 
 	var volumeMounts []corev1.VolumeMount
 	var volumes []corev1.Volume
 	var args []string
-	var missingSecrets []string
-
-	defer func() {
-		recorder := controller.GetEventRecorder(ctx)
-		if len(missingSecrets) > 0 && recorder != nil && obj != nil {
-			recorder.Eventf(obj, corev1.EventTypeWarning, "FailedToRetrieveSecret",
-				"Unable to retrieve some secrets (%s); attempting to use them may not succeed.",
-				strings.Join(missingSecrets, ", "))
-		}
-	}()
-
 	// Track duplicated secrets, prevent errors like this:
 	//  Pod "xxx" is invalid: spec.containers[0].volumeMounts[12].mountPath: Invalid value:
 	//  "/tekton/creds-secrets/demo-docker-credentials": must be unique
@@ -108,11 +86,6 @@ func credsInit(ctx context.Context, obj runtime.Object, serviceAccountName, name
 		visitedSecrets[secretEntry.Name] = struct{}{}
 
 		secret, err := kubeclient.CoreV1().Secrets(namespace).Get(ctx, secretEntry.Name, metav1.GetOptions{})
-		if k8serrors.IsNotFound(err) {
-			missingSecrets = append(missingSecrets, secretEntry.Name)
-			logger.Warnf("Secret %q in ServiceAccount %s/%s not found, skipping", secretEntry.Name, namespace, serviceAccountName)
-			continue
-		}
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -133,10 +106,10 @@ func credsInit(ctx context.Context, obj runtime.Object, serviceAccountName, name
 			// While secret names can use RFC1123 DNS subdomain name rules, the volume mount
 			// name required the stricter DNS label standard, for example no dots anymore.
 			sanitizedName := dnsLabel1123Forbidden.ReplaceAllString(secret.Name, "-")
-			name := names.SimpleNameGenerator.RestrictLengthWithRandomSuffix("tekton-internal-secret-volume-" + sanitizedName)
+			name := names.SimpleNameGenerator.RestrictLengthWithRandomSuffix(fmt.Sprintf("tekton-internal-secret-volume-%s", sanitizedName))
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{
 				Name:      name,
-				MountPath: credmatcher.VolumeName(secret.Name),
+				MountPath: credentials.VolumeName(secret.Name),
 			})
 			volumes = append(volumes, corev1.Volume{
 				Name: name,
@@ -186,7 +159,7 @@ func checkGitSSHSecret(ctx context.Context, secret *corev1.Secret) error {
 
 	if secret.Type == corev1.SecretTypeSSHAuth && cfg.FeatureFlags.RequireGitSSHSecretKnownHosts {
 		if _, ok := secret.Data[sshKnownHosts]; !ok {
-			return errors.New("TaskRun validation failed. Git SSH Secret must have \"known_hosts\" included " +
+			return fmt.Errorf("TaskRun validation failed. Git SSH Secret must have \"known_hosts\" included " +
 				"when feature flag \"require-git-ssh-secret-known-hosts\" is set to true")
 		}
 	}

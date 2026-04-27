@@ -17,9 +17,12 @@ package taskrun
 import (
 	"sort"
 
-	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+var trGroupResource = schema.GroupVersionResource{Group: "tekton.dev", Resource: "taskruns"}
 
 type Run struct {
 	Name           string
@@ -51,7 +54,7 @@ func IsFiltered(tr Run, allowed []string) bool {
 	return len(Filter(trs, allowed)) == 0
 }
 
-func HasScheduled(trs *v1.PipelineRunTaskRunStatus) bool {
+func HasScheduled(trs *v1beta1.PipelineRunTaskRunStatus) bool {
 	if trs.Status != nil {
 		return trs.Status.PodName != ""
 	}
@@ -78,7 +81,9 @@ func Filter(trs []Run, ts []string) []Run {
 	return filtered
 }
 
-func SortTasksBySpecOrder(pipelineTasks []v1.PipelineTask, pipelinesTaskRuns map[string]*v1.PipelineRunTaskRunStatus) []Run {
+type taskRunMap map[string]*v1beta1.PipelineRunTaskRunStatus
+
+func SortTasksBySpecOrder(pipelineTasks []v1beta1.PipelineTask, pipelinesTaskRuns taskRunMap) []Run {
 	trNames := map[string]string{}
 
 	for name, t := range pipelinesTaskRuns {

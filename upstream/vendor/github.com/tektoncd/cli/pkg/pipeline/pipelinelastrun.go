@@ -17,23 +17,14 @@ package pipeline
 import (
 	"fmt"
 
-	"github.com/tektoncd/cli/pkg/actions"
 	"github.com/tektoncd/cli/pkg/cli"
-	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	run "github.com/tektoncd/cli/pkg/pipelinerun"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// LastRun returns the name of last pipelinerun for a given pipeline
-func LastRunName(cs *cli.Clients, resourceName, ns string) (string, error) {
-	latest, err := LastRun(cs, resourceName, ns)
-	if err != nil {
-		return "", err
-	}
-	return latest.Name, nil
-}
-
 // DynamicLastRun returns the last run for a given pipeline
-func LastRun(cs *cli.Clients, pipeline string, ns string) (*v1.PipelineRun, error) {
+func LastRun(cs *cli.Clients, pipeline string, ns string) (*v1beta1.PipelineRun, error) {
 	options := metav1.ListOptions{}
 	if pipeline != "" {
 		options = metav1.ListOptions{
@@ -41,8 +32,7 @@ func LastRun(cs *cli.Clients, pipeline string, ns string) (*v1.PipelineRun, erro
 		}
 	}
 
-	var runs *v1.PipelineRunList
-	err := actions.ListV1(pipelineRunGroupResource, cs, options, ns, &runs)
+	runs, err := run.List(cs, options, ns)
 	if err != nil {
 		return nil, err
 	}

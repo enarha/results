@@ -26,7 +26,6 @@ import (
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/record"
 	"github.com/tektoncd/results/pkg/api/server/v1alpha2/result"
 	"github.com/tektoncd/results/pkg/watcher/convert"
-	"github.com/tektoncd/results/pkg/watcher/reconciler"
 	"github.com/tektoncd/results/pkg/watcher/reconciler/annotation"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"google.golang.org/grpc"
@@ -41,26 +40,19 @@ import (
 	"knative.dev/pkg/logging"
 )
 
-const (
-	// objectName is used to store the name of the object in the result summary
-	objectName = "object.metadata.name"
-)
-
 // Client is a wrapper around a Results client that provides helpful utilities
 // for performing result operations that require multiple RPCs or data specific
 // operations.
 type Client struct {
 	pb.ResultsClient
 	pb.LogsClient
-	reconciler.Config
 }
 
 // NewClient returns a new results client for the particular kind.
-func NewClient(resultsClient pb.ResultsClient, logsClient pb.LogsClient, reconcilerConfig *reconciler.Config) *Client {
+func NewClient(resultsClient pb.ResultsClient, logsClient pb.LogsClient) *Client {
 	return &Client{
 		ResultsClient: resultsClient,
 		LogsClient:    logsClient,
-		Config:        *reconcilerConfig,
 	}
 }
 
@@ -104,7 +96,7 @@ func (c *Client) Put(ctx context.Context, o Object, opts ...grpc.CallOption) (*p
 // one, or updates the existing Result with new Object details if necessary.
 func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOption) (*pb.Result, error) {
 	resName := resultName(o)
-	curr, err := c.GetResult(ctx, &pb.GetResultRequest{Name: resName}, opts...)
+	curr, err := c.ResultsClient.GetResult(ctx, &pb.GetResultRequest{Name: resName}, opts...)
 	if err != nil && status.Code(err) != codes.NotFound {
 		return nil, status.Errorf(status.Code(err), "GetResult(%s): %v", resName, err)
 	}
@@ -131,7 +123,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 
 	// Set the Result.Annotations and Result.Summary.Annotations fields if
 	// the object in question contains the required annotations.
-	res.Annotations = map[string]string{}
+
 	if value, found := o.GetAnnotations()[annotation.ResultAnnotations]; found {
 		resultAnnotations, err := parseAnnotations(annotation.ResultAnnotations, value)
 		if err != nil {
@@ -162,24 +154,6 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 			}
 			res.Summary.Annotations = annotations
 		}
-		// Set the Result.Summary.Labels fields if the object in question contains the required labels.
-		summaryLabels := strings.Split(c.SummaryLabels, ",")
-		if len(summaryLabels) > 0 && summaryLabels[0] != "" {
-			for _, v := range summaryLabels {
-				if value, found := o.GetLabels()[v]; found {
-					res.Annotations[v] = value
-				}
-			}
-		}
-		summaryAnnotations := strings.Split(c.SummaryAnnotations, ",")
-		if len(summaryAnnotations) > 0 && summaryAnnotations[0] != "" {
-			for _, v := range summaryAnnotations {
-				if value, found := o.GetLabels()[v]; found {
-					res.Annotations[v] = value
-				}
-			}
-		}
-		res.Annotations[objectName] = o.GetName()
 	}
 
 	// Regardless of whether the object is a top level record or not,
@@ -190,17 +164,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 			Parent: parentName(o),
 			Result: res,
 		}
-		created, err := c.CreateResult(ctx, req, opts...)
-		if err != nil {
-			if status.Code(err) == codes.AlreadyExists {
-				logger.Debug("Result was created concurrently - refetching")
-				return c.GetResult(ctx, &pb.GetResultRequest{
-					Name: resName,
-				}, opts...)
-			}
-			return nil, err
-		}
-		return created, nil
+		return c.ResultsClient.CreateResult(ctx, req, opts...)
 	}
 
 	// From here on, we're checking to see if there are any updates that need
@@ -224,7 +188,7 @@ func (c *Client) ensureResult(ctx context.Context, o Object, opts ...grpc.CallOp
 		Name:   resName,
 		Result: res,
 	}
-	return c.UpdateResult(ctx, req, opts...)
+	return c.ResultsClient.UpdateResult(ctx, req, opts...)
 }
 
 // parseAnnotations attempts to return the provided value as a map of strings.

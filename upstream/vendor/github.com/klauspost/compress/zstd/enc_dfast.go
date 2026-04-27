@@ -13,7 +13,7 @@ const (
 	dFastLongLen       = 8                       // Bytes used for table hash
 
 	dLongTableShardCnt  = 1 << (dFastLongTableBits - dictShardBits) // Number of shards in the table
-	dLongTableShardSize = dFastLongTableSize / dLongTableShardCnt   // Size of an individual shard
+	dLongTableShardSize = dFastLongTableSize / tableShardCnt        // Size of an individual shard
 
 	dFastShortTableBits = tableBits                // Bits used in the short match table
 	dFastShortTableSize = 1 << dFastShortTableBits // Size of the table
@@ -44,10 +44,14 @@ func (e *doubleFastEncoder) Encode(blk *blockEnc, src []byte) {
 	)
 
 	// Protect against e.cur wraparound.
-	for e.cur >= e.bufferReset-int32(len(e.hist)) {
+	for e.cur >= bufferReset {
 		if len(e.hist) == 0 {
-			e.table = [dFastShortTableSize]tableEntry{}
-			e.longTable = [dFastLongTableSize]tableEntry{}
+			for i := range e.table[:] {
+				e.table[i] = tableEntry{}
+			}
+			for i := range e.longTable[:] {
+				e.longTable[i] = tableEntry{}
+			}
 			e.cur = e.maxMatchOff
 			break
 		}
@@ -138,9 +142,9 @@ encodeLoop:
 				if repIndex >= 0 && load3232(src, repIndex) == uint32(cv>>(repOff*8)) {
 					// Consider history as well.
 					var seq seq
-					length := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
+					lenght := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
 
-					seq.matchLen = uint32(length - zstdMinMatch)
+					seq.matchLen = uint32(lenght - zstdMinMatch)
 
 					// We might be able to match backwards.
 					// Extend as long as we can.
@@ -149,7 +153,10 @@ encodeLoop:
 					// and have to do special offset treatment.
 					startLimit := nextEmit + 1
 
-					tMin := max(s-e.maxMatchOff, 0)
+					tMin := s - e.maxMatchOff
+					if tMin < 0 {
+						tMin = 0
+					}
 					for repIndex > tMin && start > startLimit && src[repIndex-1] == src[start-1] && seq.matchLen < maxMatchLength-zstdMinMatch-1 {
 						repIndex--
 						start--
@@ -163,11 +170,11 @@ encodeLoop:
 						println("repeat sequence", seq, "next s:", s)
 					}
 					blk.sequences = append(blk.sequences, seq)
-					s += length + repOff
+					s += lenght + repOff
 					nextEmit = s
 					if s >= sLimit {
 						if debugEncoder {
-							println("repeat ended", s, length)
+							println("repeat ended", s, lenght)
 
 						}
 						break encodeLoop
@@ -263,7 +270,10 @@ encodeLoop:
 		l := e.matchlen(s+4, t+4, src) + 4
 
 		// Extend backwards
-		tMin := max(s-e.maxMatchOff, 0)
+		tMin := s - e.maxMatchOff
+		if tMin < 0 {
+			tMin = 0
+		}
 		for t > tMin && s > nextEmit && src[t-1] == src[s-1] && l < maxMatchLength {
 			s--
 			t--
@@ -378,7 +388,7 @@ func (e *doubleFastEncoder) EncodeNoHist(blk *blockEnc, src []byte) {
 	)
 
 	// Protect against e.cur wraparound.
-	if e.cur >= e.bufferReset {
+	if e.cur >= bufferReset {
 		for i := range e.table[:] {
 			e.table[i] = tableEntry{}
 		}
@@ -456,7 +466,10 @@ encodeLoop:
 					// and have to do special offset treatment.
 					startLimit := nextEmit + 1
 
-					tMin := max(s-e.maxMatchOff, 0)
+					tMin := s - e.maxMatchOff
+					if tMin < 0 {
+						tMin = 0
+					}
 					for repIndex > tMin && start > startLimit && src[repIndex-1] == src[start-1] {
 						repIndex--
 						start--
@@ -567,7 +580,10 @@ encodeLoop:
 		l := int32(matchLen(src[s+4:], src[t+4:])) + 4
 
 		// Extend backwards
-		tMin := max(s-e.maxMatchOff, 0)
+		tMin := s - e.maxMatchOff
+		if tMin < 0 {
+			tMin = 0
+		}
 		for t > tMin && s > nextEmit && src[t-1] == src[s-1] {
 			s--
 			t--
@@ -669,7 +685,7 @@ encodeLoop:
 	}
 
 	// We do not store history, so we must offset e.cur to avoid false matches for next user.
-	if e.cur < e.bufferReset {
+	if e.cur < bufferReset {
 		e.cur += int32(len(src))
 	}
 }
@@ -684,7 +700,7 @@ func (e *doubleFastEncoderDict) Encode(blk *blockEnc, src []byte) {
 	)
 
 	// Protect against e.cur wraparound.
-	for e.cur >= e.bufferReset-int32(len(e.hist)) {
+	for e.cur >= bufferReset {
 		if len(e.hist) == 0 {
 			for i := range e.table[:] {
 				e.table[i] = tableEntry{}
@@ -786,9 +802,9 @@ encodeLoop:
 				if repIndex >= 0 && load3232(src, repIndex) == uint32(cv>>(repOff*8)) {
 					// Consider history as well.
 					var seq seq
-					length := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
+					lenght := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
 
-					seq.matchLen = uint32(length - zstdMinMatch)
+					seq.matchLen = uint32(lenght - zstdMinMatch)
 
 					// We might be able to match backwards.
 					// Extend as long as we can.
@@ -797,7 +813,10 @@ encodeLoop:
 					// and have to do special offset treatment.
 					startLimit := nextEmit + 1
 
-					tMin := max(s-e.maxMatchOff, 0)
+					tMin := s - e.maxMatchOff
+					if tMin < 0 {
+						tMin = 0
+					}
 					for repIndex > tMin && start > startLimit && src[repIndex-1] == src[start-1] && seq.matchLen < maxMatchLength-zstdMinMatch-1 {
 						repIndex--
 						start--
@@ -811,11 +830,11 @@ encodeLoop:
 						println("repeat sequence", seq, "next s:", s)
 					}
 					blk.sequences = append(blk.sequences, seq)
-					s += length + repOff
+					s += lenght + repOff
 					nextEmit = s
 					if s >= sLimit {
 						if debugEncoder {
-							println("repeat ended", s, length)
+							println("repeat ended", s, lenght)
 
 						}
 						break encodeLoop
@@ -912,7 +931,10 @@ encodeLoop:
 		l := e.matchlen(s+4, t+4, src) + 4
 
 		// Extend backwards
-		tMin := max(s-e.maxMatchOff, 0)
+		tMin := s - e.maxMatchOff
+		if tMin < 0 {
+			tMin = 0
+		}
 		for t > tMin && s > nextEmit && src[t-1] == src[s-1] && l < maxMatchLength {
 			s--
 			t--
@@ -1066,7 +1088,7 @@ func (e *doubleFastEncoderDict) Reset(d *dict, singleBlock bool) {
 			}
 		}
 		e.lastDictID = d.id
-		allDirty = true
+		e.allDirty = true
 	}
 	// Reset table to initial state
 	e.cur = e.maxMatchOff

@@ -1,16 +1,13 @@
 package postgres
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/stdlib"
 	"gorm.io/gorm"
 	"gorm.io/gorm/callbacks"
@@ -27,16 +24,10 @@ type Dialector struct {
 type Config struct {
 	DriverName           string
 	DSN                  string
-	WithoutQuotingCheck  bool
 	PreferSimpleProtocol bool
 	WithoutReturning     bool
 	Conn                 gorm.ConnPool
 }
-
-var (
-	timeZoneMatcher         = regexp.MustCompile("(time_zone|TimeZone|timezone)=(.*?)($|&| )")
-	defaultIdentifierLength = 63 //maximum identifier length for postgres
-)
 
 func Open(dsn string) gorm.Dialector {
 	return &Dialector{&Config{DSN: dsn}}
@@ -50,33 +41,12 @@ func (dialector Dialector) Name() string {
 	return "postgres"
 }
 
-func (dialector Dialector) Apply(config *gorm.Config) error {
-	if config.NamingStrategy == nil {
-		config.NamingStrategy = schema.NamingStrategy{
-			IdentifierMaxLength: defaultIdentifierLength,
-		}
-		return nil
-	}
-
-	switch v := config.NamingStrategy.(type) {
-	case *schema.NamingStrategy:
-		if v.IdentifierMaxLength <= 0 {
-			v.IdentifierMaxLength = defaultIdentifierLength
-		}
-	case schema.NamingStrategy:
-		if v.IdentifierMaxLength <= 0 {
-			v.IdentifierMaxLength = defaultIdentifierLength
-			config.NamingStrategy = v
-		}
-	}
-
-	return nil
-}
+var timeZoneMatcher = regexp.MustCompile("(time_zone|TimeZone)=(.*?)($|&| )")
 
 func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 	callbackConfig := &callbacks.Config{
 		CreateClauses: []string{"INSERT", "VALUES", "ON CONFLICT"},
-		UpdateClauses: []string{"UPDATE", "SET", "FROM", "WHERE"},
+		UpdateClauses: []string{"UPDATE", "SET", "WHERE"},
 		DeleteClauses: []string{"DELETE", "FROM", "WHERE"},
 	}
 	// register callbacks
@@ -102,23 +72,10 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 			config.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 		}
 		result := timeZoneMatcher.FindStringSubmatch(dialector.Config.DSN)
-		var options []stdlib.OptionOpenDB
 		if len(result) > 2 {
 			config.RuntimeParams["timezone"] = result[2]
-			options = append(options, stdlib.OptionAfterConnect(func(ctx context.Context, conn *pgx.Conn) error {
-				loc, tzErr := time.LoadLocation(result[2])
-				if tzErr != nil {
-					return tzErr
-				}
-				conn.TypeMap().RegisterType(&pgtype.Type{
-					Name:  "timestamp",
-					OID:   pgtype.TimestampOID,
-					Codec: &pgtype.TimestampCodec{ScanLocation: loc},
-				})
-				return nil
-			}))
 		}
-		db.ConnPool = stdlib.OpenDB(*config, options...)
+		db.ConnPool = stdlib.OpenDB(*config)
 	}
 	return
 }
@@ -137,23 +94,10 @@ func (dialector Dialector) DefaultValueOf(field *schema.Field) clause.Expression
 
 func (dialector Dialector) BindVarTo(writer clause.Writer, stmt *gorm.Statement, v interface{}) {
 	writer.WriteByte('$')
-	index := 0
-	varLen := len(stmt.Vars)
-	if varLen > 0 {
-		switch stmt.Vars[0].(type) {
-		case pgx.QueryExecMode:
-			index++
-		}
-	}
-	writer.WriteString(strconv.Itoa(varLen - index))
+	writer.WriteString(strconv.Itoa(len(stmt.Vars)))
 }
 
 func (dialector Dialector) QuoteTo(writer clause.Writer, str string) {
-	if dialector.WithoutQuotingCheck {
-		writer.WriteString(str)
-		return
-	}
-
 	var (
 		underQuoted, selfQuoted bool
 		continuousBacktick      int8
@@ -244,7 +188,7 @@ func (dialector Dialector) DataTypeOf(field *schema.Field) string {
 		}
 		return "decimal"
 	case schema.String:
-		if field.Size > 0 && field.Size <= 10485760 {
+		if field.Size > 0 {
 			return fmt.Sprintf("varchar(%d)", field.Size)
 		}
 		return "text"

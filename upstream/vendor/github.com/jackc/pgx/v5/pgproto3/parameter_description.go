@@ -33,7 +33,7 @@ func (dst *ParameterDescription) Decode(src []byte) error {
 
 	*dst = ParameterDescription{ParameterOIDs: make([]uint32, parameterCount)}
 
-	for i := range parameterCount {
+	for i := 0; i < parameterCount; i++ {
 		dst.ParameterOIDs[i] = binary.BigEndian.Uint32(buf.Next(4))
 	}
 

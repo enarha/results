@@ -276,6 +276,7 @@ func (c *CompositeCodec) DecodeValue(m *Map, oid uint32, format int16, src []byt
 	default:
 		return nil, fmt.Errorf("unknown format code %d", format)
 	}
+
 }
 
 type CompositeBinaryScanner struct {
@@ -476,7 +477,7 @@ func (b *CompositeBinaryBuilder) AppendValue(oid uint32, field any) {
 		return
 	}
 
-	if isNil, _ := isNilDriverValuer(field); isNil {
+	if field == nil {
 		b.buf = pgio.AppendUint32(b.buf, oid)
 		b.buf = pgio.AppendInt32(b.buf, -1)
 		b.fieldCount++
@@ -533,7 +534,7 @@ func (b *CompositeTextBuilder) AppendValue(oid uint32, field any) {
 		return
 	}
 
-	if isNil, _ := isNilDriverValuer(field); isNil {
+	if field == nil {
 		b.buf = append(b.buf, ',')
 		return
 	}

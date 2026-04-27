@@ -168,8 +168,7 @@ func DistributionCountOnlyMetric(name string, count int64, tags map[string]strin
 		Values: []Value{{
 			Distribution:                &metricdata.Distribution{Count: count},
 			Tags:                        tags,
-			VerifyDistributionCountOnly: true,
-		}},
+			VerifyDistributionCountOnly: true}},
 	}
 }
 

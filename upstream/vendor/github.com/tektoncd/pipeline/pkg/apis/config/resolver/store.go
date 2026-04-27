@@ -1,5 +1,3 @@
-//go:build !disable_tls
-
 /*
 Copyright 2022 The Tekton Authors
 
@@ -20,6 +18,7 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 
 	"knative.dev/pkg/configmap"
 )
@@ -34,7 +33,7 @@ type Config struct {
 
 // ResolversNamespace takes the pipelines namespace and appends "-resolvers" to it.
 func ResolversNamespace(baseNS string) string {
-	return baseNS + "-resolvers"
+	return fmt.Sprintf("%s-resolvers", baseNS)
 }
 
 // FromContext extracts a Config from the provided context.

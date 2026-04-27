@@ -15,10 +15,10 @@
 package formatted
 
 import (
-	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 )
 
-func GetTaskRefName(task *v1.PipelineTask) string {
+func GetTaskRefName(task *v1beta1.PipelineTask) string {
 	if task.TaskRef != nil {
 		return task.TaskRef.Name
 	}

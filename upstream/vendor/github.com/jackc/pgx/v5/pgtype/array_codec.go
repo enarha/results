@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/jackc/pgx/v5/internal/anynil"
 	"github.com/jackc/pgx/v5/internal/pgio"
 )
 
@@ -118,7 +119,7 @@ func (p *encodePlanArrayCodecText) Encode(value any, buf []byte) (newBuf []byte,
 	var encodePlan EncodePlan
 	var lastElemType reflect.Type
 	inElemBuf := make([]byte, 0, 32)
-	for i := range elementCount {
+	for i := 0; i < elementCount; i++ {
 		if i > 0 {
 			buf = append(buf, ',')
 		}
@@ -131,7 +132,7 @@ func (p *encodePlanArrayCodecText) Encode(value any, buf []byte) (newBuf []byte,
 
 		elem := array.Index(i)
 		var elemBuf []byte
-		if isNil, _ := isNilDriverValuer(elem); !isNil {
+		if elem != nil {
 			elemType := reflect.TypeOf(elem)
 			if lastElemType != elemType {
 				lastElemType = elemType
@@ -189,13 +190,13 @@ func (p *encodePlanArrayCodecBinary) Encode(value any, buf []byte) (newBuf []byt
 
 	var encodePlan EncodePlan
 	var lastElemType reflect.Type
-	for i := range elementCount {
+	for i := 0; i < elementCount; i++ {
 		sp := len(buf)
 		buf = pgio.AppendInt32(buf, -1)
 
 		elem := array.Index(i)
 		var elemBuf []byte
-		if isNil, _ := isNilDriverValuer(elem); !isNil {
+		if elem != nil {
 			elemType := reflect.TypeOf(elem)
 			if lastElemType != elemType {
 				lastElemType = elemType
@@ -229,7 +230,7 @@ func (c *ArrayCodec) PlanScan(m *Map, oid uint32, format int16, target any) Scan
 
 	// target / arrayScanner might be a pointer to a nil. If it is create one so we can call ScanIndexType to plan the
 	// scan of the elements.
-	if isNil, _ := isNilDriverValuer(target); isNil {
+	if anynil.Is(target) {
 		arrayScanner = reflect.New(reflect.TypeOf(target).Elem()).Interface().(ArraySetter)
 	}
 
@@ -270,7 +271,7 @@ func (c *ArrayCodec) decodeBinary(m *Map, arrayOID uint32, src []byte, array Arr
 		elementScanPlan = m.PlanScan(c.ElementType.OID, BinaryFormatCode, array.ScanIndex(0))
 	}
 
-	for i := range elementCount {
+	for i := 0; i < elementCount; i++ {
 		elem := array.ScanIndex(i)
 		elemLen := int(int32(binary.BigEndian.Uint32(src[rp:])))
 		rp += 4
@@ -388,7 +389,7 @@ func isRagged(slice reflect.Value) bool {
 
 	sliceLen := slice.Len()
 	innerLen := 0
-	for i := range sliceLen {
+	for i := 0; i < sliceLen; i++ {
 		if i == 0 {
 			innerLen = slice.Index(i).Len()
 		} else {

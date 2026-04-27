@@ -8,9 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tektoncd/results/pkg/cli/dev/format"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/tektoncd/results/pkg/cli/format"
 	pb "github.com/tektoncd/results/proto/v1alpha2/results_go_proto"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/encoding/prototext"

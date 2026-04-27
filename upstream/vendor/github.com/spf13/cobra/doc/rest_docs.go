@@ -1,4 +1,4 @@
-// Copyright 2013-2023 The Cobra Authors
+// Copyright 2013-2022 The Cobra Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ func printOptionsReST(buf *bytes.Buffer, cmd *cobra.Command, name string) error 
 	return nil
 }
 
-// defaultLinkHandler for default ReST hyperlink markup
+// linkHandler for default ReST hyperlink markup
 func defaultLinkHandler(name, ref string) string {
 	return fmt.Sprintf("`%s <%s.rst>`_", name, ref)
 }
@@ -82,13 +82,13 @@ func GenReSTCustom(cmd *cobra.Command, w io.Writer, linkHandler func(string, str
 	buf.WriteString("\n" + long + "\n\n")
 
 	if cmd.Runnable() {
-		fmt.Fprintf(buf, "::\n\n  %s\n\n", cmd.UseLine())
+		buf.WriteString(fmt.Sprintf("::\n\n  %s\n\n", cmd.UseLine()))
 	}
 
 	if len(cmd.Example) > 0 {
 		buf.WriteString("Examples\n")
 		buf.WriteString("~~~~~~~~\n\n")
-		fmt.Fprintf(buf, "::\n\n%s\n\n", indentString(cmd.Example, "  "))
+		buf.WriteString(fmt.Sprintf("::\n\n%s\n\n", indentString(cmd.Example, "  ")))
 	}
 
 	if err := printOptionsReST(buf, cmd, name); err != nil {
@@ -101,7 +101,7 @@ func GenReSTCustom(cmd *cobra.Command, w io.Writer, linkHandler func(string, str
 			parent := cmd.Parent()
 			pname := parent.CommandPath()
 			ref = strings.ReplaceAll(pname, " ", "_")
-			fmt.Fprintf(buf, "* %s \t - %s\n", linkHandler(pname, ref), parent.Short)
+			buf.WriteString(fmt.Sprintf("* %s \t - %s\n", linkHandler(pname, ref), parent.Short))
 			cmd.VisitParents(func(c *cobra.Command) {
 				if c.DisableAutoGenTag {
 					cmd.DisableAutoGenTag = c.DisableAutoGenTag
@@ -118,7 +118,7 @@ func GenReSTCustom(cmd *cobra.Command, w io.Writer, linkHandler func(string, str
 			}
 			cname := name + " " + child.Name()
 			ref = strings.ReplaceAll(cname, " ", "_")
-			fmt.Fprintf(buf, "* %s \t - %s\n", linkHandler(cname, ref), child.Short)
+			buf.WriteString(fmt.Sprintf("* %s \t - %s\n", linkHandler(cname, ref), child.Short))
 		}
 		buf.WriteString("\n")
 	}
@@ -140,7 +140,7 @@ func GenReSTTree(cmd *cobra.Command, dir string) error {
 	return GenReSTTreeCustom(cmd, dir, emptyStr, defaultLinkHandler)
 }
 
-// GenReSTTreeCustom is the same as GenReSTTree, but
+// GenReSTTreeCustom is the the same as GenReSTTree, but
 // with custom filePrepender and linkHandler.
 func GenReSTTreeCustom(cmd *cobra.Command, dir string, filePrepender func(string) string, linkHandler func(string, string) string) error {
 	for _, c := range cmd.Commands() {
@@ -169,7 +169,7 @@ func GenReSTTreeCustom(cmd *cobra.Command, dir string, filePrepender func(string
 	return nil
 }
 
-// indentString adapted from: https://github.com/kr/text/blob/main/indent.go
+// adapted from: https://github.com/kr/text/blob/main/indent.go
 func indentString(s, p string) string {
 	var res []byte
 	b := []byte(s)

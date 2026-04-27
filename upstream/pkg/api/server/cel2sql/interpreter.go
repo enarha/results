@@ -89,9 +89,9 @@ func (i *interpreter) interpretExpr(expr *exprpb.Expr) error {
 func (i *interpreter) unsupportedExprError(id int64, name string) error {
 	sourceInfo := i.checkedExpr.SourceInfo
 	column := sourceInfo.Positions[id]
-	var line int
+	var line int32
 	for i, offset := range sourceInfo.LineOffsets {
-		line = i + 1
+		line = int32(i) + 1
 		if offset > column {
 			break
 		}

@@ -20,8 +20,7 @@ type User struct {
 	Account   Account
 	Pets      []*Pet
 	NamedPet  *Pet
-	Toys      []Toy   `gorm:"polymorphic:Owner"`
-	Tools     []Tools `gorm:"polymorphicType:Type;polymorphicId:CustomID"`
+	Toys      []Toy `gorm:"polymorphic:Owner"`
 	CompanyID *int
 	Company   Company
 	ManagerID *uint
@@ -50,13 +49,6 @@ type Toy struct {
 	Name      string
 	OwnerID   string
 	OwnerType string
-}
-
-type Tools struct {
-	gorm.Model
-	Name     string
-	CustomID string
-	Type     string
 }
 
 type Company struct {

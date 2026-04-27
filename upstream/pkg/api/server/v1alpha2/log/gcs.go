@@ -27,7 +27,7 @@ import (
 	"os"
 
 	server "github.com/tektoncd/results/pkg/api/server/config"
-	"github.com/tektoncd/results/pkg/apis/v1alpha3"
+	"github.com/tektoncd/results/pkg/apis/v1alpha2"
 
 	"gocloud.dev/blob/gcsblob"
 	"gocloud.dev/gcp"
@@ -41,7 +41,7 @@ type gcsStream struct {
 }
 
 // NewGCSStream returns a log streamer for the GCS storage type.
-func NewGCSStream(ctx context.Context, log *v1alpha3.Log, config *server.Config) (Stream, error) {
+func NewGCSStream(ctx context.Context, log *v1alpha2.Log, config *server.Config) (Stream, error) {
 	if log.Status.Path == "" {
 		filePath, err := FilePath(log)
 		if err != nil {
@@ -53,9 +53,7 @@ func NewGCSStream(ctx context.Context, log *v1alpha3.Log, config *server.Config)
 	filePath := filepath.Join(config.LOGS_PATH, log.Status.Path)
 
 	if config.STORAGE_EMULATOR_HOST != "" {
-		if err := os.Setenv("STORAGE_EMULATOR_HOST", config.STORAGE_EMULATOR_HOST); err != nil {
-			return nil, fmt.Errorf("failed to set STORAGE_EMULATOR_HOST: %w", err)
-		}
+		os.Setenv("STORAGE_EMULATOR_HOST", config.STORAGE_EMULATOR_HOST)
 	}
 	client, err := getGCSClient(ctx, config)
 	if err != nil {
@@ -91,25 +89,21 @@ func getGCSClient(ctx context.Context, cfg *server.Config) (*gcp.HTTPClient, err
 }
 
 func (*gcsStream) Type() string {
-	return string(v1alpha3.GCSLogType)
+	return string(v1alpha2.GCSLogType)
 }
 
-func (gcs *gcsStream) WriteTo(w io.Writer) (n int64, err error) {
+func (gcs *gcsStream) WriteTo(w io.Writer) (int64, error) {
 	bucket, err := gcsblob.OpenBucket(gcs.ctx, gcs.client, gcs.config.GCS_BUCKET_NAME, nil)
 	if err != nil {
 		return 0, fmt.Errorf("could not open bucket: %v", err)
 	}
-	defer func() {
-		if cerr := bucket.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("could not close bucket: %w", cerr)
-		}
-	}()
+	defer bucket.Close()
 
 	r, err := bucket.NewReader(gcs.ctx, gcs.key, nil)
 	if err != nil {
 		return 0, fmt.Errorf("could not create bucket reader: %v for the key: %s", err, gcs.key)
 	}
-	n, err = r.WriteTo(w)
+	n, err := r.WriteTo(w)
 	if err != nil {
 		return 0, fmt.Errorf("could not read data from bucket: %v for the key: %s", err, gcs.key)
 	}
@@ -121,11 +115,7 @@ func (gcs *gcsStream) ReadFrom(r io.Reader) (n int64, err error) {
 	if err != nil {
 		return 0, fmt.Errorf("could not open bucket: %v for the key: %s", err, gcs.key)
 	}
-	defer func() {
-		if cerr := bucket.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("could not close bucket: %w for the key: %s", cerr, gcs.key)
-		}
-	}()
+	defer bucket.Close()
 
 	w, err := bucket.NewWriter(gcs.ctx, gcs.key, nil)
 	if err != nil {
@@ -149,16 +139,12 @@ func (gcs *gcsStream) Flush() error {
 	return nil
 }
 
-func (gcs *gcsStream) Delete() (err error) {
+func (gcs *gcsStream) Delete() error {
 	bucket, err := gcsblob.OpenBucket(gcs.ctx, gcs.client, gcs.config.GCS_BUCKET_NAME, nil)
 	if err != nil {
 		return fmt.Errorf("could not open bucket: %v for the key: %s", err, gcs.key)
 	}
-	defer func() {
-		if cerr := bucket.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("could not close bucket: %w for the key: %s", cerr, gcs.key)
-		}
-	}()
+	defer bucket.Close()
 
 	if err := bucket.Delete(gcs.ctx, gcs.key); err != nil {
 		return fmt.Errorf("could not delete bucket data: %v for the key: %s", err, gcs.key)

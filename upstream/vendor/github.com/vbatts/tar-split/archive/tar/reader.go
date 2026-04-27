@@ -7,6 +7,7 @@ package tar
 import (
 	"bytes"
 	"io"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ type fileReader interface {
 // RawBytes accesses the raw bytes of the archive, apart from the file payload itself.
 // This includes the header and padding.
 //
-// # This call resets the current rawbytes buffer
+// This call resets the current rawbytes buffer
 //
 // Only when RawAccounting is enabled, otherwise this returns nil
 func (tr *Reader) RawBytes() []byte {
@@ -54,11 +55,6 @@ func (tr *Reader) RawBytes() []byte {
 
 	return tr.rawBytes.Bytes()
 
-}
-
-// ExpectedPadding returns the number of bytes of padding expected after the last header returned by Next()
-func (tr *Reader) ExpectedPadding() int64 {
-	return tr.pad
 }
 
 // NewReader creates a new Reader reading from r.
@@ -130,9 +126,7 @@ func (tr *Reader) next() (*Header, error) {
 				return nil, err
 			}
 			if hdr.Typeflag == TypeXGlobalHeader {
-				if err = mergePAX(hdr, paxHdrs); err != nil {
-					return nil, err
-				}
+				mergePAX(hdr, paxHdrs)
 				return &Header{
 					Name:       hdr.Name,
 					Typeflag:   hdr.Typeflag,
@@ -144,7 +138,7 @@ func (tr *Reader) next() (*Header, error) {
 			continue // This is a meta header affecting the next header
 		case TypeGNULongName, TypeGNULongLink:
 			format.mayOnlyBe(FormatGNU)
-			realname, err := readSpecialFile(tr)
+			realname, err := ioutil.ReadAll(tr)
 			if err != nil {
 				return nil, err
 			}
@@ -338,7 +332,7 @@ func mergePAX(hdr *Header, paxHdrs map[string]string) (err error) {
 // parsePAX parses PAX headers.
 // If an extended header (type 'x') is invalid, ErrHeader is returned
 func parsePAX(r io.Reader) (map[string]string, error) {
-	buf, err := readSpecialFile(r)
+	buf, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
@@ -387,9 +381,9 @@ func parsePAX(r io.Reader) (map[string]string, error) {
 // header in case further processing is required.
 //
 // The err will be set to io.EOF only when one of the following occurs:
-//   - Exactly 0 bytes are read and EOF is hit.
-//   - Exactly 1 block of zeros is read and EOF is hit.
-//   - At least 2 blocks of zeros are read.
+//	* Exactly 0 bytes are read and EOF is hit.
+//	* Exactly 1 block of zeros is read and EOF is hit.
+//	* At least 2 blocks of zeros are read.
 func (tr *Reader) readHeader() (*Header, *block, error) {
 	// Two blocks of zero bytes marks the end of the archive.
 	n, err := io.ReadFull(tr.r, tr.blk[:])
@@ -581,17 +575,12 @@ func readGNUSparseMap1x0(r io.Reader) (sparseDatas, error) {
 		cntNewline int64
 		buf        bytes.Buffer
 		blk        block
-		totalSize  int
 	)
 
 	// feedTokens copies data in blocks from r into buf until there are
 	// at least cnt newlines in buf. It will not read more blocks than needed.
 	feedTokens := func(n int64) error {
 		for cntNewline < n {
-			totalSize += len(blk)
-			if totalSize > maxSpecialFileSize {
-				return errSparseTooLong
-			}
 			if _, err := mustReadFull(r, blk[:]); err != nil {
 				return err
 			}
@@ -624,8 +613,8 @@ func readGNUSparseMap1x0(r io.Reader) (sparseDatas, error) {
 	}
 
 	// Parse for all member entries.
-	// numEntries is trusted after this since feedTokens limits the number of
-	// tokens based on maxSpecialFileSize.
+	// numEntries is trusted after this since a potential attacker must have
+	// committed resources proportional to what this library used.
 	if err := feedTokens(2 * numEntries); err != nil {
 		return nil, err
 	}
@@ -894,16 +883,6 @@ func tryReadFull(r io.Reader, b []byte) (n int, err error) {
 	return n, err
 }
 
-// readSpecialFile is like io.ReadAll except it returns
-// ErrFieldTooLong if more than maxSpecialFileSize is read.
-func readSpecialFile(r io.Reader) ([]byte, error) {
-	buf, err := io.ReadAll(io.LimitReader(r, maxSpecialFileSize+1))
-	if len(buf) > maxSpecialFileSize {
-		return nil, ErrFieldTooLong
-	}
-	return buf, err
-}
-
 // discard skips n bytes in r, reporting an error if unable to do so.
 func discard(tr *Reader, n int64) error {
 	var seekSkipped, copySkipped int64
@@ -935,7 +914,7 @@ func discard(tr *Reader, n int64) error {
 		}
 	}
 
-	copySkipped, err = io.CopyN(io.Discard, r, n-seekSkipped)
+	copySkipped, err = io.CopyN(ioutil.Discard, r, n-seekSkipped)
 out:
 	if err == io.EOF && seekSkipped+copySkipped < n {
 		err = io.ErrUnexpectedEOF

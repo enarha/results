@@ -527,7 +527,6 @@ func (w *netIPNetWrapper) ScanNetipPrefix(v netip.Prefix) error {
 
 	return nil
 }
-
 func (w netIPNetWrapper) NetipPrefixValue() (netip.Prefix, error) {
 	ip, ok := netip.AddrFromSlice(w.IP)
 	if !ok {
@@ -882,6 +881,7 @@ func (a *anyMultiDimSliceArray) SetDimensions(dimensions []ArrayDimension) error
 
 		return nil
 	}
+
 }
 
 func (a *anyMultiDimSliceArray) makeMultidimensionalSlice(sliceType reflect.Type, dimensions []ArrayDimension, flatSlice reflect.Value, flatSliceIdx int) reflect.Value {
@@ -892,7 +892,7 @@ func (a *anyMultiDimSliceArray) makeMultidimensionalSlice(sliceType reflect.Type
 
 	sliceLen := int(dimensions[0].Length)
 	slice := reflect.MakeSlice(sliceType, sliceLen, sliceLen)
-	for i := range sliceLen {
+	for i := 0; i < sliceLen; i++ {
 		subSlice := a.makeMultidimensionalSlice(sliceType.Elem(), dimensions[1:], flatSlice, flatSliceIdx+(i*int(dimensions[1].Length)))
 		slice.Index(i).Set(subSlice)
 	}

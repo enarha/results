@@ -1,4 +1,3 @@
-// Package impersonation provides user impersonation support for API requests.
 package impersonation
 
 import (

@@ -4,19 +4,18 @@ package ecr
 
 import (
 	"context"
-	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Creates or updates the permissions policy for your registry.
-//
-// A registry policy is used to specify permissions for another Amazon Web
-// Services account and is used when configuring cross-account replication. For
-// more information, see [Registry permissions]in the Amazon Elastic Container Registry User Guide.
-//
-// [Registry permissions]: https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry-permissions.html
+// Creates or updates the permissions policy for your registry. A registry policy
+// is used to specify permissions for another Amazon Web Services account and is
+// used when configuring cross-account replication. For more information, see
+// Registry permissions
+// (https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry-permissions.html)
+// in the Amazon Elastic Container Registry User Guide.
 func (c *Client) PutRegistryPolicy(ctx context.Context, params *PutRegistryPolicyInput, optFns ...func(*Options)) (*PutRegistryPolicyOutput, error) {
 	if params == nil {
 		params = &PutRegistryPolicyInput{}
@@ -34,11 +33,10 @@ func (c *Client) PutRegistryPolicy(ctx context.Context, params *PutRegistryPolic
 
 type PutRegistryPolicyInput struct {
 
-	// The JSON policy text to apply to your registry. The policy text follows the
-	// same format as IAM policy text. For more information, see [Registry permissions]in the Amazon Elastic
-	// Container Registry User Guide.
-	//
-	// [Registry permissions]: https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry-permissions.html
+	// The JSON policy text to apply to your registry. The policy text follows the same
+	// format as IAM policy text. For more information, see Registry permissions
+	// (https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry-permissions.html)
+	// in the Amazon Elastic Container Registry User Guide.
 	//
 	// This member is required.
 	PolicyText *string
@@ -51,7 +49,7 @@ type PutRegistryPolicyOutput struct {
 	// The JSON policy text for your registry.
 	PolicyText *string
 
-	// The registry ID associated with the request.
+	// The registry ID.
 	RegistryId *string
 
 	// Metadata pertaining to the operation's result.
@@ -61,9 +59,6 @@ type PutRegistryPolicyOutput struct {
 }
 
 func (c *Client) addOperationPutRegistryPolicyMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpPutRegistryPolicy{}, middleware.After)
 	if err != nil {
 		return err
@@ -72,41 +67,34 @@ func (c *Client) addOperationPutRegistryPolicyMiddlewares(stack *middleware.Stac
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "PutRegistryPolicy"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
-
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addClientRequestID(stack); err != nil {
+	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addComputeContentLength(stack); err != nil {
+	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addComputePayloadSHA256(stack); err != nil {
+	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetryMiddlewares(stack, options); err != nil {
 		return err
 	}
-	if err = addRawResponseToMetadata(stack); err != nil {
+	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
+	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack, options); err != nil {
+	if err = addClientUserAgent(stack); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -115,22 +103,10 @@ func (c *Client) addOperationPutRegistryPolicyMiddlewares(stack *middleware.Stac
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = addOpPutRegistryPolicyValidationMiddleware(stack); err != nil {
 		return err
 	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opPutRegistryPolicy(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -142,21 +118,6 @@ func (c *Client) addOperationPutRegistryPolicyMiddlewares(stack *middleware.Stac
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -164,6 +125,7 @@ func newServiceMetadataMiddleware_opPutRegistryPolicy(region string) *awsmiddlew
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
+		SigningName:   "ecr",
 		OperationName: "PutRegistryPolicy",
 	}
 }

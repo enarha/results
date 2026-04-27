@@ -1,19 +1,3 @@
-/*
-Copyright 2023 The Tekton Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package v1beta1
 
 import (
@@ -30,7 +14,6 @@ func (p ParamSpec) convertTo(ctx context.Context, sink *v1.ParamSpec) {
 		sink.Type = v1.ParamType(ParamTypeString)
 	}
 	sink.Description = p.Description
-	sink.Enum = p.Enum
 	var properties map[string]v1.PropertySpec
 	if p.Properties != nil {
 		properties = make(map[string]v1.PropertySpec)
@@ -55,7 +38,6 @@ func (p *ParamSpec) convertFrom(ctx context.Context, source v1.ParamSpec) {
 		p.Type = ParamTypeString
 	}
 	p.Description = source.Description
-	p.Enum = source.Enum
 	var properties map[string]PropertySpec
 	if source.Properties != nil {
 		properties = make(map[string]PropertySpec)
@@ -79,8 +61,7 @@ func (p Param) convertTo(ctx context.Context, sink *v1.Param) {
 	sink.Value = newValue
 }
 
-// ConvertFrom converts v1beta1 Param from v1 Param
-func (p *Param) ConvertFrom(ctx context.Context, source v1.Param) {
+func (p *Param) convertFrom(ctx context.Context, source v1.Param) {
 	p.Name = source.Name
 	newValue := ParamValue{}
 	newValue.convertFrom(ctx, source.Value)

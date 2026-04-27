@@ -14,7 +14,7 @@ import (
 )
 
 // PostgreSQL internal numeric storage uses 16-bit "digits" with base of 10,000
-const nbase = 10_000
+const nbase = 10000
 
 const (
 	pgNumericNaN     = 0x00000000c0000000
@@ -27,19 +27,16 @@ const (
 	pgNumericNegInfSign = 0xf000
 )
 
-var (
-	big1    *big.Int = big.NewInt(1)
-	big10   *big.Int = big.NewInt(10)
-	big100  *big.Int = big.NewInt(100)
-	big1000 *big.Int = big.NewInt(1000)
-)
+var big0 *big.Int = big.NewInt(0)
+var big1 *big.Int = big.NewInt(1)
+var big10 *big.Int = big.NewInt(10)
+var big100 *big.Int = big.NewInt(100)
+var big1000 *big.Int = big.NewInt(1000)
 
-var (
-	bigNBase   *big.Int = big.NewInt(nbase)
-	bigNBaseX2 *big.Int = big.NewInt(nbase * nbase)
-	bigNBaseX3 *big.Int = big.NewInt(nbase * nbase * nbase)
-	bigNBaseX4 *big.Int = big.NewInt(nbase * nbase * nbase * nbase)
-)
+var bigNBase *big.Int = big.NewInt(nbase)
+var bigNBaseX2 *big.Int = big.NewInt(nbase * nbase)
+var bigNBaseX3 *big.Int = big.NewInt(nbase * nbase * nbase)
+var bigNBaseX4 *big.Int = big.NewInt(nbase * nbase * nbase * nbase)
 
 type NumericScanner interface {
 	ScanNumeric(v Numeric) error
@@ -57,18 +54,15 @@ type Numeric struct {
 	Valid            bool
 }
 
-// ScanNumeric implements the [NumericScanner] interface.
 func (n *Numeric) ScanNumeric(v Numeric) error {
 	*n = v
 	return nil
 }
 
-// NumericValue implements the [NumericValuer] interface.
 func (n Numeric) NumericValue() (Numeric, error) {
 	return n, nil
 }
 
-// Float64Value implements the [Float64Valuer] interface.
 func (n Numeric) Float64Value() (Float8, error) {
 	if !n.Valid {
 		return Float8{}, nil
@@ -98,7 +92,6 @@ func (n Numeric) Float64Value() (Float8, error) {
 	return Float8{Float64: f, Valid: true}, nil
 }
 
-// ScanInt64 implements the [Int64Scanner] interface.
 func (n *Numeric) ScanInt64(v Int8) error {
 	if !v.Valid {
 		*n = Numeric{}
@@ -109,7 +102,6 @@ func (n *Numeric) ScanInt64(v Int8) error {
 	return nil
 }
 
-// Int64Value implements the [Int64Valuer] interface.
 func (n Numeric) Int64Value() (Int8, error) {
 	if !n.Valid {
 		return Int8{}, nil
@@ -165,7 +157,7 @@ func (n *Numeric) toBigInt() (*big.Int, error) {
 	div.Exp(big10, big.NewInt(int64(-n.Exp)), nil)
 	remainder := &big.Int{}
 	num.DivMod(num, div, remainder)
-	if remainder.Sign() != 0 {
+	if remainder.Cmp(big0) != 0 {
 		return nil, fmt.Errorf("cannot convert %v to integer", n)
 	}
 	return num, nil
@@ -193,11 +185,14 @@ func parseNumericString(str string) (n *big.Int, exp int32, err error) {
 }
 
 func nbaseDigitsToInt64(src []byte) (accum int64, bytesRead, digitsRead int) {
-	digits := min(len(src)/2, 4)
+	digits := len(src) / 2
+	if digits > 4 {
+		digits = 4
+	}
 
 	rp := 0
 
-	for i := range digits {
+	for i := 0; i < digits; i++ {
 		if i > 0 {
 			accum *= nbase
 		}
@@ -208,7 +203,7 @@ func nbaseDigitsToInt64(src []byte) (accum int64, bytesRead, digitsRead int) {
 	return accum, rp, digits
 }
 
-// Scan implements the [database/sql.Scanner] interface.
+// Scan implements the database/sql Scanner interface.
 func (n *Numeric) Scan(src any) error {
 	if src == nil {
 		*n = Numeric{}
@@ -223,7 +218,7 @@ func (n *Numeric) Scan(src any) error {
 	return fmt.Errorf("cannot scan %T", src)
 }
 
-// Value implements the [database/sql/driver.Valuer] interface.
+// Value implements the database/sql/driver Valuer interface.
 func (n Numeric) Value() (driver.Value, error) {
 	if !n.Valid {
 		return nil, nil
@@ -236,7 +231,6 @@ func (n Numeric) Value() (driver.Value, error) {
 	return string(buf), err
 }
 
-// MarshalJSON implements the [encoding/json.Marshaler] interface.
 func (n Numeric) MarshalJSON() ([]byte, error) {
 	if !n.Valid {
 		return []byte("null"), nil
@@ -249,7 +243,6 @@ func (n Numeric) MarshalJSON() ([]byte, error) {
 	return n.numberTextBytes(), nil
 }
 
-// UnmarshalJSON implements the [encoding/json.Unmarshaler] interface.
 func (n *Numeric) UnmarshalJSON(src []byte) error {
 	if bytes.Equal(src, []byte(`null`)) {
 		*n = Numeric{}
@@ -276,14 +269,14 @@ func (n Numeric) numberTextBytes() []byte {
 	exp := int(n.Exp)
 	if exp > 0 {
 		buf.WriteString(intStr)
-		for range exp {
+		for i := 0; i < exp; i++ {
 			buf.WriteByte('0')
 		}
 	} else if exp < 0 {
 		if len(intStr) <= -exp {
 			buf.WriteString("0.")
 			leadingZeros := -exp - len(intStr)
-			for range leadingZeros {
+			for i := 0; i < leadingZeros; i++ {
 				buf.WriteByte('0')
 			}
 			buf.WriteString(intStr)
@@ -405,7 +398,7 @@ func encodeNumericBinary(n Numeric, buf []byte) (newBuf []byte, err error) {
 	}
 
 	var sign int16
-	if n.Int.Sign() < 0 {
+	if n.Int.Cmp(big0) < 0 {
 		sign = 16384
 	}
 
@@ -443,12 +436,12 @@ func encodeNumericBinary(n Numeric, buf []byte) (newBuf []byte, err error) {
 
 	var wholeDigits, fracDigits []int16
 
-	for wholePart.Sign() != 0 {
+	for wholePart.Cmp(big0) != 0 {
 		wholePart.DivMod(wholePart, bigNBase, remainder)
 		wholeDigits = append(wholeDigits, int16(remainder.Int64()))
 	}
 
-	if fracPart.Sign() != 0 {
+	if fracPart.Cmp(big0) != 0 {
 		for fracPart.Cmp(big1) != 0 {
 			fracPart.DivMod(fracPart, bigNBase, remainder)
 			fracDigits = append(fracDigits, int16(remainder.Int64()))
@@ -560,6 +553,7 @@ func encodeNumericText(n Numeric, buf []byte) (newBuf []byte, err error) {
 }
 
 func (NumericCodec) PlanScan(m *Map, oid uint32, format int16, target any) ScanPlan {
+
 	switch format {
 	case BinaryFormatCode:
 		switch target.(type) {
@@ -654,19 +648,18 @@ func (scanPlanBinaryNumericToNumericScanner) Scan(src []byte, dst any) error {
 	exp := (int32(weight) - int32(ndigits) + 1) * 4
 
 	if dscale > 0 {
-		fracNBaseDigits := int(ndigits) - int(weight) - 1
+		fracNBaseDigits := int16(int32(ndigits) - int32(weight) - 1)
 		fracDecimalDigits := fracNBaseDigits * 4
-		dscaleInt := int(dscale)
 
-		if dscaleInt > fracDecimalDigits {
-			multCount := dscaleInt - fracDecimalDigits
-			for range multCount {
+		if dscale > fracDecimalDigits {
+			multCount := int(dscale - fracDecimalDigits)
+			for i := 0; i < multCount; i++ {
 				accum.Mul(accum, big10)
 				exp--
 			}
-		} else if dscaleInt < fracDecimalDigits {
-			divCount := fracDecimalDigits - dscaleInt
-			for range divCount {
+		} else if dscale < fracDecimalDigits {
+			divCount := int(fracDecimalDigits - dscale)
+			for i := 0; i < divCount; i++ {
 				accum.Div(accum, big10)
 				exp++
 			}
@@ -678,7 +671,7 @@ func (scanPlanBinaryNumericToNumericScanner) Scan(src []byte, dst any) error {
 	if exp >= 0 {
 		for {
 			reduced.DivMod(accum, big10, remainder)
-			if remainder.Sign() != 0 {
+			if remainder.Cmp(big0) != 0 {
 				break
 			}
 			accum.Set(reduced)

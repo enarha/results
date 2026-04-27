@@ -25,14 +25,16 @@ import (
 	"github.com/fatih/color"
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/tektoncd/cli/pkg/cli"
-	pipelinerunpkg "github.com/tektoncd/cli/pkg/pipelinerun"
-	taskrunpkg "github.com/tektoncd/cli/pkg/taskrun"
+	prdesc "github.com/tektoncd/cli/pkg/pipelinerun/description"
+	trdesc "github.com/tektoncd/cli/pkg/taskrun/description"
 )
 
 type DescribeOptions struct {
 	Params                    cli.Params
 	PipelineName              string
 	PipelineRunName           string
+	PipelineResourceName      string
+	ClusterTaskName           string
 	TaskName                  string
 	TaskrunName               string
 	Tasks                     []string
@@ -88,6 +90,10 @@ func (opts *DescribeOptions) Ask(resource string, options []string) error {
 		opts.PipelineName = ans
 	case ResourceNamePipelineRun:
 		opts.PipelineRunName = strings.Fields(ans)[0]
+	case ResourceNamePipelineResource:
+		opts.PipelineResourceName = ans
+	case ResourceNameClusterTask:
+		opts.ClusterTaskName = ans
 	case ResourceNameTask:
 		opts.TaskName = ans
 	case ResourceNameTaskRun:
@@ -117,7 +123,7 @@ func (opts *DescribeOptions) FuzzyAsk(resource string, options []string) error {
 		func(i int) string {
 			return strings.Fields(options[i])[0]
 		},
-		fuzzyfinder.WithPreviewWindow(func(i, _, _ int) string {
+		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
 			if i == -1 {
 				return ""
 			}
@@ -128,18 +134,14 @@ func (opts *DescribeOptions) FuzzyAsk(resource string, options []string) error {
 			}
 
 			bname := strings.Fields(options[i])[0]
-			cs, err := opts.Params.Clients()
-			if err != nil {
-				return fmt.Sprintf("Cannot initialize client: %s", err.Error())
-			}
 			switch resource {
 			case ResourceNameTaskRun:
-				err := taskrunpkg.PrintTaskRunDescription(s.Out, cs, opts.Params.Namespace(), bname, opts.Params.Time())
+				err := trdesc.PrintTaskRunDescription(&s, bname, opts.Params)
 				if err != nil {
 					return fmt.Sprintf("Cannot get taskrun description for %s: %s", bname, err.Error())
 				}
 			case ResourceNamePipelineRun:
-				err = pipelinerunpkg.PrintPipelineRunDescription(s.Out, cs, opts.Params.Namespace(), bname, opts.Params.Time())
+				err := prdesc.PrintPipelineRunDescription(&s, bname, opts.Params)
 				if err != nil {
 					return fmt.Sprintf("Cannot get pipelinerun description for %s: %s", bname, err.Error())
 				}
