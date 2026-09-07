@@ -189,6 +189,17 @@ func backendTransportError(backend string, err error) error {
 	return status.Errorf(code, "%s log backend unavailable", backend)
 }
 
+// logBackendError normalizes an error returned by a log backend plugin into a
+// gRPC status error. Errors that already carry a status code are returned
+// unchanged so the backend's code (e.g. PermissionDenied, NotFound) reaches the
+// client; anything else becomes Internal instead of the default Unknown.
+func logBackendError(err error) error {
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+	return status.Error(codes.Internal, err.Error())
+}
+
 type getLog func(s *LogServer, writer io.Writer, parent string, rec *db.Record) error
 
 // GetLog streams log record by log request
@@ -218,9 +229,9 @@ func (s *LogServer) GetLog(req *pb3.GetLogRequest, srv pb3.Logs_GetLogServer) er
 
 	writer := logs.NewBufferedHTTPWriter(srv, req.GetName(), s.config.LOGS_BUFFER_SIZE)
 
-	err = s.getLog(s, writer, parent, rec)
-	if err != nil {
+	if err := s.getLog(s, writer, parent, rec); err != nil {
 		s.logger.Error(err)
+		return logBackendError(err)
 	}
 
 	_, err = writer.Flush()
