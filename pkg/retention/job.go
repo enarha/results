@@ -46,19 +46,26 @@ func (a *Agent) stop() {
 func (a *Agent) job() {
 	a.Logger.Infof("retention job started at: %s, retention policy: %+v", time.Now().String(), a.RetentionPolicy)
 
+	// First, remove the data of the namespaces that no longer exist in the
+	// cluster, when enabled. It runs before the age based cleanup so that it is
+	// not skipped when the configured policies are invalid.
+	if a.NamespaceCleanup.Enabled {
+		a.cleanupDeletedNamespaces()
+	}
+
 	caseStatement, err := buildCaseStatement(a.Policies, a.DefaultRetention)
 	if err != nil {
 		a.Logger.Errorf("failed to build case statement: %v", err)
 		return
 	}
 
-	// First, clean up PipelineRun results.
+	// Then, clean up PipelineRun results.
 	a.cleanupResults(caseStatement, "tekton.dev/v1.PipelineRun")
 
-	// Second, clean up top-level TaskRun results.
+	// Next, clean up top-level TaskRun results.
 	a.cleanupResults(caseStatement, "tekton.dev/v1.TaskRun")
 
-	// Third, clean up top-level CustomRun results.
+	// Finally, clean up top-level CustomRun results.
 	a.cleanupResults(caseStatement, "tekton.dev/v1beta1.CustomRun")
 
 	a.Logger.Infof("retention job finished at: %s", time.Now().String())
