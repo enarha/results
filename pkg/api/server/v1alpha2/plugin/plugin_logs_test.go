@@ -96,7 +96,6 @@ func TestLogPluginServer_GetLog(t *testing.T) {
 	srv, err := server.New(&config.Config{
 		LOGS_API:                                true,
 		LOGS_TYPE:                               "Loki",
-		DB_ENABLE_AUTO_MIGRATION:                true,
 		LOGGING_PLUGIN_TOKEN_PATH:               tokenPath,
 		LOGGING_PLUGIN_PROXY_PATH:               "/app",
 		LOGGING_PLUGIN_API_URL:                  mockLoki.URL,
@@ -314,7 +313,6 @@ func TestSplunkLogs(t *testing.T) {
 	cfg := &config.Config{
 		LOGS_API:                                true,
 		LOGS_TYPE:                               "Splunk",
-		DB_ENABLE_AUTO_MIGRATION:                true,
 		LOGGING_PLUGIN_API_URL:                  mockSplunk.URL,
 		LOGGING_PLUGIN_NAMESPACE_KEY:            "kubernetes.namespace_name",
 		LOGGING_PLUGIN_CONTAINER_KEY:            "kubernetes.container_name",
@@ -463,7 +461,6 @@ func TestGetLokiLogs_BuildsQueryWithConfiguredJSONMappingAndLineFormat(t *testin
 	srv, err := server.New(&config.Config{
 		LOGS_API:                                true,
 		LOGS_TYPE:                               "Loki",
-		DB_ENABLE_AUTO_MIGRATION:                true,
 		LOGGING_PLUGIN_TOKEN_PATH:               tokenPath,
 		LOGGING_PLUGIN_PROXY_PATH:               "",
 		LOGGING_PLUGIN_API_URL:                  mockLoki.URL,
@@ -581,7 +578,6 @@ func TestGetLokiLogs_FailsWhenLineFormatUsesUndefinedField(t *testing.T) {
 	srv, err := server.New(&config.Config{
 		LOGS_API:                                true,
 		LOGS_TYPE:                               "Loki",
-		DB_ENABLE_AUTO_MIGRATION:                true,
 		LOGGING_PLUGIN_TOKEN_PATH:               tokenPath,
 		LOGGING_PLUGIN_PROXY_PATH:               "",
 		LOGGING_PLUGIN_API_URL:                  mockLoki.URL,

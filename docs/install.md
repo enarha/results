@@ -100,3 +100,10 @@ kubectl apply -f https://infra.tekton.dev/tekton-releases/results/previous/${REL
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for how to install Tekton Results from
 source.
+
+## Database schema
+
+Each release includes the `tekton-results-db-migrate` Job, which creates or
+upgrades the database schema, including databases created by releases without
+versioned migrations. The API server and retention policy agent wait,
+restarting, until it completes. See [Database migrations](database-migrations.md).
