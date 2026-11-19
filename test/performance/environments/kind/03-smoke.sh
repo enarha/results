@@ -44,19 +44,19 @@ assert_json() {
 }
 
 echo "== load --verify =="
-go run "${BENCHMARK}" load --verify "${common[@]}" --output "${OUT}/load.json"
+go run "${BENCHMARK}" load --verify "${common[@]}" > "${OUT}/load.json"
 assert_json "${OUT}/load.json"
 
 echo "== store =="
-go run "${BENCHMARK}" store "${common[@]}" --output "${OUT}/store.json"
+go run "${BENCHMARK}" store "${common[@]}" > "${OUT}/store.json"
 assert_json "${OUT}/store.json"
 
 echo "== query =="
-go run "${BENCHMARK}" query "${common[@]}" --transport both --duration "${DURATION}" --output "${OUT}/query.json"
+go run "${BENCHMARK}" query "${common[@]}" --transport both --duration "${DURATION}" > "${OUT}/query.json"
 assert_json "${OUT}/query.json"
 
 echo "== mixed =="
-go run "${BENCHMARK}" mixed "${common[@]}" --duration "${DURATION}" --output "${OUT}/mixed.json"
+go run "${BENCHMARK}" mixed "${common[@]}" --duration "${DURATION}" > "${OUT}/mixed.json"
 assert_json "${OUT}/mixed.json"
 
 echo "smoke run passed"

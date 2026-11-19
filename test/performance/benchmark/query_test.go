@@ -103,11 +103,10 @@ func TestQueryCommandCompletion(t *testing.T) {
 			if err := os.WriteFile(tokenPath, []byte("test-token"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			outputPath := filepath.Join(dir, "query.json")
 			cmd := newRootCmd()
 			args := []string{
 				"query", "--server-addr", https.URL, "--server-name", "127.0.0.1",
-				"--cert", certPath, "--token", tokenPath, "--output", outputPath,
+				"--cert", certPath, "--token", tokenPath,
 				"--transport", tt.transport, "--count", strconv.Itoa(tt.count),
 				"--concurrency", strconv.Itoa(tt.concurrency),
 			}
@@ -124,15 +123,8 @@ func TestQueryCommandCompletion(t *testing.T) {
 			if ctx.Err() != nil {
 				t.Fatal("query required external cancellation instead of completing its count")
 			}
-			data, err := os.ReadFile(outputPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(stdout) != string(data) {
-				t.Error("stdout does not match the saved query report")
-			}
 			var got report.Report
-			if err := json.Unmarshal(data, &got); err != nil {
+			if err := json.Unmarshal(stdout, &got); err != nil {
 				t.Fatal(err)
 			}
 			if tt.duration > 0 {

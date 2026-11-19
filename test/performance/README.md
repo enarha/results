@@ -23,8 +23,10 @@ kustomize/     benchmark deployment overlays with API client rate limits
 
 - A running Tekton Results deployment. The benchmark reaches it over the
   address in `<API_SERVER_ADDR>` (default `https://localhost:8080`).
-- A client certificate and a service account token with access to the
-  Results API. The install scripts under
+- A CA certificate (to verify the API server's TLS certificate) and a service
+  account token with access to the Results API. Both are **required** — the
+  benchmark always verifies TLS; there is no insecure/skip-verification mode.
+  The install scripts under
   [`environments/kind/`](../test/performance/environments/kind/) print their
   paths.
 - Go >= 1.26.
@@ -60,8 +62,8 @@ kubectl kustomize test/performance/kustomize
 kubectl kustomize test/performance/kustomize/external-db
 ```
 
-Check if the api server address, certificate and token paths 
-environment variables (should have been exposed by the 
+Check if the api server address, certificate and token paths
+environment variables (should have been exposed by the
 previously executed 01-install-localdb.sh script):
 
 ```bash
@@ -78,23 +80,24 @@ go run ./test/performance/benchmark load --verify \
 --cert "${SSL_CERT_PATH}/tekton-results-cert.pem" \
 --token "${SA_TOKEN_PATH}/all-namespaces-admin-access"
 
-# 3. Benchmark — reports are printed to stdout and saved under --output (created
-#    on demand); omit --output to save /tmp/<timestamp>-<commit>.json instead.
+# 3. Benchmark — each command prints its JSON report to stdout
 go run ./test/performance/benchmark store  \
 --cert "${SSL_CERT_PATH}/tekton-results-cert.pem" \
---token "${SA_TOKEN_PATH}/all-namespaces-admin-access" \
---output test/performance/output/store.json
+--token "${SA_TOKEN_PATH}/all-namespaces-admin-access"
 
 go run ./test/performance/benchmark query  \
 --cert "${SSL_CERT_PATH}/tekton-results-cert.pem" \
 --token "${SA_TOKEN_PATH}/all-namespaces-admin-access" \
---output test/performance/output/query.json --transport both
+--transport both
 
+# store already wrote the live range above; mixed's writers reuse the same
+# deterministic UIDs and will collide with it (AlreadyExists) unless that data
+# is cleared first — see "Cleaning up write data between runs" below.
 go run ./test/performance/benchmark mixed  \
 --cert "${SSL_CERT_PATH}/tekton-results-cert.pem" \
 --token "${SA_TOKEN_PATH}/all-namespaces-admin-access" \
 --concurrency 8 --read-ratio 3 --write-ratio 1 \
---output test/performance/output/mixed.json --duration 60
+--duration 60
 ```
 
 ## Subcommands
@@ -108,15 +111,15 @@ go run ./test/performance/benchmark mixed  \
 | `dataset` | Emits the golden `DatasetDefinition` JSON — no cluster required. |
 
 `load`, `store`, `query`, and `mixed` print the JSON benchmark report to stdout
-and save the same report to the selected file. `--output` chooses the file path;
-when omitted, the file defaults to `/tmp/<timestamp>-<commit>.json`. Stdout
-contains the report JSON, so it can be redirected or piped to tools such as `jq`.
+only — there is no `--output` flag. Redirect stdout yourself if you want to keep
+a report, e.g. `... store ... > store.json`; it can also be piped directly to
+tools such as `jq`.
 
-When `load` or `store` uses `--output report.json`, it also writes
-`report.sendlog.json` with the instance UIDs, record names, and operation status
-codes for ingest verification. The load report and send log are written before
-`--verify` runs, so they remain available if verification fails. No sidecar is
-written when `--output` is omitted.
+`load` and `store` accept `--debug`, which prints the per-instance send log
+(instance UIDs, record names, and operation status codes) to stderr after the
+run — a debugging aid for ingest verification, not part of the report contract
+on stdout. It is printed before `--verify` runs, so it's available even if
+verification fails.
 
 Every `load` report includes `metrics.seed_load` with `total_instances`,
 `failed_instances`, and `error_rate_percent`.
@@ -128,6 +131,34 @@ Write errors do not fail the command; `--verify` still fails if the stored row
 counts do not match the golden definition. See [Investigating seed-load errors](#investigating-seed-load-errors)
 for how to find the underlying error in API and Postgres logs.
 
+## Cleaning up write data between runs
+
+`store` and `mixed` write to a deterministic **live** UID range derived only
+from `--seed`, `--count`, and `--namespaces` (see
+[Dataset determinism](#dataset-determinism)) — not from anything unique to the
+invocation. Running `store` or `mixed` again against a cluster that already has
+that live range loaded reuses the exact same Result/Record names, so
+`create_result`, `create_record`, and `create_child_record` all return
+`AlreadyExists`. `create_result` and `create_child_record` tolerate this (the
+report's `by_op` error counts still show it as a raw API status, even though it
+doesn't count as a failed instance), but `create_record` does not: on a rerun it
+fails outright, and every `update_record` call for that instance then fails with
+`FailedPrecondition` because there is no record left to update. A stale live
+range makes a rerun's metrics unreliable, not just noisy — clear it first.
+
+Against the bundled local-DB deployment, truncate the write tables (this clears
+rows, not the schema, and is safe to run between any two write-benchmark
+invocations):
+
+```bash
+kubectl exec -n tekton-pipelines statefulset/tekton-results-postgres -- \
+  bash -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "TRUNCATE TABLE records, results CASCADE;"'
+```
+
+For the external-DB overlay, truncate the same two tables through whatever
+client/role your external database provides.
+
 ## Common flags
 
 Defaults come from the same environment variables the e2e suite uses.
@@ -136,8 +167,8 @@ Defaults come from the same environment variables the e2e suite uses.
 | ----------------- | ------------------------------------ | ----------------- |
 | `--server-addr`   | `https://localhost:8080`             | `API_SERVER_ADDR` |
 | `--server-name`   | `tekton-results-api-service…svc…`    | `API_SERVER_NAME` |
-| `--cert`          | —                                    | `SSL_CERT_PATH`   |
-| `--token`         | —                                    | `SA_TOKEN_PATH`   |
+| `--cert`          | — (required)                         | `SSL_CERT_FILE`   |
+| `--token`         | —                                    | `SA_TOKEN_FILE`   |
 | `--concurrency`   | `8`                                  |                   |
 | `--count`         | `1000` (count-bounded runs)          |                   |
 | `--duration`      | `0` (count-bounded)                 |                   |
@@ -145,7 +176,6 @@ Defaults come from the same environment variables the e2e suite uses.
 | `--namespaces`    | `50`                                 |                   |
 | `--child-min/max` | `2` / `15`                           |                   |
 | `--db-type`    | `local`                              | `BENCH_DB_TYPE`   |
-| `--output`        | `/tmp/<timestamp>-<commit>.json`      |                   |
 
 Without `--duration`, `query` attempts `--count` complete paginated queries in
 total across all workers (default `1000`), then writes its report. Each page
@@ -233,11 +263,12 @@ can appear there even when `failed_instances` is zero.
 
 ### Investigating seed-load errors
 
-Start with the instance summary and the operations with nonzero error counts:
+Start with the instance summary and the operations with nonzero error counts.
+`report_path` below is wherever you redirected the command's stdout, e.g.
+`load --verify ... > load.json`:
 
 ```bash
-# Replace this with the path of your load report.
-report_path=/tmp/20261022-120000-abcdef01.json
+report_path=load.json
 jq '{seed_load: .metrics.seed_load,
      failed_operations: (.metrics.by_op | with_entries(select(.value.errors > 0)))}' "$report_path"
 ```
@@ -261,9 +292,10 @@ kubectl logs -n tekton-pipelines \
 Inspect `api.log` for request failures, timeouts, and database errors. Inspect
 `postgres.log` for `ERROR`, `FATAL`, deadlocks, connection-limit errors, or failed
 statements around the same time. Use the report's `meta.duration_ms` to identify
-the run's time window, and the instance UIDs/resource names in the send log, when
-available, to correlate entries. Authentication, validation, or transport errors
-can occur before a database request, so they may have no matching Postgres entry.
+the run's time window, and rerun with `--debug` (capture it with `2>`) to get the
+instance UIDs/resource names needed to correlate entries. Authentication,
+validation, or transport errors can occur before a database request, so they may
+have no matching Postgres entry.
 
 If a container restarted, request its previous logs with `kubectl logs --previous`
 using that pod and container name. For the external database overlay, use the

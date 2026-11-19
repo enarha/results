@@ -133,7 +133,6 @@ func TestLoadSeedChildErrorsReport(t *testing.T) {
 	}
 	for _, code := range []codes.Code{codes.PermissionDenied, codes.AlreadyExists} {
 		t.Run(code.String(), func(t *testing.T) {
-			cfg.OutputPath = filepath.Join(t.TempDir(), "load.json")
 			client := seedResultsClient{createRecordErrs: map[string]error{
 				inst.ChildRecords[0]: status.Error(code, "create child"),
 			}}
@@ -143,18 +142,17 @@ func TestLoadSeedChildErrorsReport(t *testing.T) {
 				t.Fatalf("loadSeed() = %v, want nonfatal write errors", err)
 			}
 			snap := m.Snapshot()
-			if err := emitReport(ctx, cfg, "load", "grpc", reportExtra{
-				datasetHash: def.ContentHash,
-				seedLoad:    summarizeSeedLoad(log),
-			}, snap); err != nil {
+			stdout, err := captureStdout(t, func() error {
+				return emitReport(ctx, cfg, "load", "grpc", reportExtra{
+					datasetHash: def.ContentHash,
+					seedLoad:    summarizeSeedLoad(log),
+				}, snap)
+			})
+			if err != nil {
 				t.Fatalf("emitReport() = %v", err)
 			}
-			data, err := os.ReadFile(cfg.OutputPath)
-			if err != nil {
-				t.Fatal(err)
-			}
 			var got report.Report
-			if err := json.Unmarshal(data, &got); err != nil {
+			if err := json.Unmarshal(stdout, &got); err != nil {
 				t.Fatalf("decoding load report: %v", err)
 			}
 			if got.Metrics.TotalErrors != 1 || got.Metrics.TotalOps != 18 {
@@ -173,8 +171,6 @@ func TestLoadSeedChildErrorsReport(t *testing.T) {
 }
 
 func TestLoadReportSurvivesVerificationFailure(t *testing.T) {
-	reportDir := t.TempDir()
-	t.Setenv("TMPDIR", reportDir)
 	server := grpc.NewServer()
 	// Unimplemented writes fail nonfatally; ListRecords then fails verification.
 	pb.RegisterResultsServer(server, &pb.UnimplementedResultsServer{})
@@ -204,22 +200,8 @@ func TestLoadReportSurvivesVerificationFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "seed verification failed") {
 		t.Fatalf("load --verify error = %v, want verification failure", err)
 	}
-	files, err := os.ReadDir(reportDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 1 {
-		t.Fatalf("default report directory contains %d entries, want one report", len(files))
-	}
-	data, err := os.ReadFile(filepath.Join(reportDir, files[0].Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(stdout) != string(data) {
-		t.Error("stdout does not match the saved report after verification failed")
-	}
 	var got report.Report
-	if err := json.Unmarshal(data, &got); err != nil {
+	if err := json.Unmarshal(stdout, &got); err != nil {
 		t.Fatalf("decoding report after failed verification: %v", err)
 	}
 	want := &report.SeedLoadMetrics{TotalInstances: 2, FailedInstances: 2, ErrorRatePercent: 100}
@@ -234,21 +216,17 @@ func TestLoadSeedSendLog(t *testing.T) {
 			cfg := testRunConfig()
 			cfg.Count = 24
 			cfg.Concurrency = 4
-			cfg.OutputPath = filepath.Join(t.TempDir(), "nested", "load.json")
 			client := seedResultsClient{createResultErr: status.Error(code, "create result")}
 			m, def, log, err := loadSeed(context.Background(), client, cfg)
 			if err != nil {
 				t.Fatalf("loadSeed() = %v", err)
 			}
-			if err := writeSendLog(cfg.OutputPath, log); err != nil {
-				t.Fatalf("writeSendLog() = %v", err)
-			}
-			data, err := os.ReadFile(filepath.Join(filepath.Dir(cfg.OutputPath), "load.sendlog.json"))
+			stderr, err := captureStderr(t, func() error { return printSendLog(log) })
 			if err != nil {
-				t.Fatalf("reading load send log: %v", err)
+				t.Fatalf("printSendLog() = %v", err)
 			}
 			var got []sendLogEntry
-			if err := json.Unmarshal(data, &got); err != nil {
+			if err := json.Unmarshal(stderr, &got); err != nil {
 				t.Fatalf("decoding load send log: %v", err)
 			}
 			want := make([]sendLogEntry, len(def.Instances))

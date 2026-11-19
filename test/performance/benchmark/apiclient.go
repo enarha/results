@@ -46,13 +46,15 @@ func (c *APIClients) Close() error {
 type ClientConfig struct {
 	ServerAddress string // e.g. https://localhost:8080
 	ServerName    string // TLS server name (cert CN/SAN)
-	CertFile      string // CA cert file; empty means skip verification
+	CertFile      string // CA cert file used to verify the server's TLS certificate (required)
 	TokenFile     string // bearer token file (service-account token)
 }
 
-// NewAPIClients constructs the gRPC and REST clients from cfg. When CertFile is
-// empty, TLS verification is skipped (convenient for a local kind cluster with a
-// self-signed cert).
+// NewAPIClients constructs the gRPC and REST clients from cfg. CertFile is
+// required: the benchmark always verifies the API server's TLS certificate, so a
+// CA cert matching the deployment (e.g. the one a kind install script writes
+// under SSL_CERT_PATH) must be supplied. There is no insecure/skip-verification
+// mode.
 
 func NewAPIClients(cfg ClientConfig) (*APIClients, error) {
 	var (

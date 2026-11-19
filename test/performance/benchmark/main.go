@@ -30,12 +30,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -72,6 +68,7 @@ func newRootCmd() *cobra.Command {
 
 func newStoreCmd() *cobra.Command {
 	cfg := &RunConfig{}
+	var debug bool
 	cmd := &cobra.Command{
 		Use:   "store",
 		Short: "Benchmark write/ingest by replaying the watcher lifecycle over gRPC",
@@ -95,8 +92,10 @@ func newStoreCmd() *cobra.Command {
 				}
 				log.add(storeInstance(ctx, clients.GRPC, inst, updateCountFor(index), m))
 			})
-			if err := writeSendLog(cfg.OutputPath, log); err != nil {
-				return err
+			if debug {
+				if err := printSendLog(log); err != nil {
+					return err
+				}
 			}
 			hash, err := contentHash(g)
 			if err != nil {
@@ -106,6 +105,7 @@ func newStoreCmd() *cobra.Command {
 		},
 	}
 	bindCommon(cmd, cfg)
+	cmd.Flags().BoolVar(&debug, "debug", false, "print the per-instance send log (UIDs, record names, RPC status codes) to stderr")
 	return cmd
 }
 
@@ -220,6 +220,7 @@ func newMixedCmd() *cobra.Command {
 func newLoadCmd() *cobra.Command {
 	cfg := &RunConfig{}
 	var verify bool
+	var debug bool
 	cmd := &cobra.Command{
 		Use:   "load",
 		Short: "Load the seed dataset through the API and optionally verify row counts",
@@ -235,8 +236,10 @@ func newLoadCmd() *cobra.Command {
 				return err
 			}
 			snap := m.Snapshot()
-			if err := writeSendLog(cfg.OutputPath, log); err != nil {
-				return err
+			if debug {
+				if err := printSendLog(log); err != nil {
+					return err
+				}
 			}
 			if err := emitReport(ctx, cfg, "load", "grpc", reportExtra{
 				datasetHash: def.ContentHash,
@@ -255,6 +258,7 @@ func newLoadCmd() *cobra.Command {
 	}
 	bindCommon(cmd, cfg)
 	cmd.Flags().BoolVar(&verify, "verify", false, "verify record counts against the golden definition after loading")
+	cmd.Flags().BoolVar(&debug, "debug", false, "print the per-instance send log (UIDs, record names, RPC status codes) to stderr")
 	return cmd
 }
 
@@ -272,9 +276,7 @@ func newDatasetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return withOutput(cfg.OutputPath, func(w *os.File) error {
-				return generator.WriteDefinition(w, def)
-			})
+			return generator.WriteDefinition(os.Stdout, def)
 		},
 	}
 	bindCommon(cmd, cfg)
@@ -289,7 +291,8 @@ type reportExtra struct {
 	seedLoad    *report.SeedLoadMetrics
 }
 
-// emitReport writes the same completed JSON report to its file and stdout.
+// emitReport prints the completed JSON report to stdout. Callers that want to
+// keep it redirect stdout themselves (e.g. `bench store > store.json`).
 func emitReport(ctx context.Context, cfg *RunConfig, mode, transport string, extra reportExtra, snap metrics.Snapshot) error {
 	meta := report.CaptureMeta(ctx)
 	meta.DatasetVersion = cfg.DatasetVersion
@@ -312,9 +315,7 @@ func emitReport(ctx context.Context, cfg *RunConfig, mode, transport string, ext
 	}
 	rep := report.New(meta, rc, snap)
 	rep.Metrics.SeedLoad = extra.seedLoad
-	return withOutput(cfg.OutputPath, func(w *os.File) error {
-		return report.Write(io.MultiWriter(w, os.Stdout), rep)
-	})
+	return report.Write(os.Stdout, rep)
 }
 
 // listerPicker returns a function selecting the transport for a given iteration.
@@ -342,50 +343,9 @@ func readDuration(cfg *RunConfig) time.Duration {
 	return time.Duration(cfg.DurationSec) * time.Second
 }
 
-// writeSendLog writes the load or store driver's actual send log alongside the
-// report so it can be joined against the golden DatasetDefinition on UID. It is
-// skipped when no explicit report path was provided for deriving a sidecar path.
-func writeSendLog(reportPath string, log *sendLog) error {
-	if reportPath == "" {
-		return nil
-	}
-	path := strings.TrimSuffix(reportPath, filepath.Ext(reportPath)) + ".sendlog.json"
-	return withOutput(path, func(w *os.File) error { return log.write(w) })
-}
-
-func getGitCommit() (string, error) {
-	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-// withOutput invokes fn with the report sink: a file when path is set, otherwise
-// a file under os.TempDir() named <timestamp>-<commit-sha>.json (or <timestamp>.json
-// when Git is unavailable).
-// The parent directory is created on demand so an operator can point --output at a
-// nested folder (e.g. test/performance/output/store.json) without pre-creating it.
-func withOutput(path string, fn func(*os.File) error) error {
-	if path == "" {
-
-		commit, err := getGitCommit()
-		if err != nil {
-			path = filepath.Join(os.TempDir(), time.Now().Format("20060102-150405")+".json")
-		} else {
-			path = filepath.Join(os.TempDir(), fmt.Sprintf("%s-%s.json", time.Now().Format("20060102-150405"), commit))
-		}
-	}
-	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // operator-provided report output path
-			return fmt.Errorf("creating output directory %q: %w", dir, err)
-		}
-	}
-	f, err := os.Create(path) //nolint:gosec // operator-provided report output path
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Report is written to: %s\n", path)
-	defer func() { _ = f.Close() }()
-	return fn(f)
+// printSendLog emits the load or store driver's actual send log to stderr so it
+// can be inspected alongside a run's other diagnostics; it's a debugging aid, not
+// part of the report contract on stdout.
+func printSendLog(log *sendLog) error {
+	return log.write(os.Stderr)
 }

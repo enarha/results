@@ -47,7 +47,6 @@ type RunConfig struct {
 
 	// Reporting.
 	Tier        string
-	OutputPath  string
 	DBBackend   string
 	ServerImage string
 }
@@ -58,7 +57,7 @@ func bindCommon(cmd *cobra.Command, cfg *RunConfig) {
 	f := cmd.Flags()
 	f.StringVar(&cfg.ServerAddress, "server-addr", envOr("API_SERVER_ADDR", "https://localhost:8080"), "API server address (env API_SERVER_ADDR)")
 	f.StringVar(&cfg.ServerName, "server-name", envOr("API_SERVER_NAME", "tekton-results-api-service.tekton-pipelines.svc.cluster.local"), "TLS server name (env API_SERVER_NAME)")
-	f.StringVar(&cfg.CertFile, "cert", os.Getenv("SSL_CERT_FILE"), "CA certificate file; empty skips verification (env SSL_CERT_FILE)")
+	f.StringVar(&cfg.CertFile, "cert", os.Getenv("SSL_CERT_FILE"), "CA certificate file used to verify the API server's TLS certificate; required, TLS verification cannot be skipped (env SSL_CERT_FILE)")
 	f.StringVar(&cfg.TokenFile, "token", os.Getenv("SA_TOKEN_FILE"), "bearer token file (env SA_TOKEN_FILE)")
 
 	f.IntVar(&cfg.Concurrency, "concurrency", 8, "number of concurrent workers")
@@ -73,7 +72,6 @@ func bindCommon(cmd *cobra.Command, cfg *RunConfig) {
 	f.IntVar(&cfg.ChildMax, "child-max", 15, "maximum child TaskRuns per PipelineRun")
 
 	f.StringVar(&cfg.Tier, "tier", "tier1", "environment tier label for the report")
-	f.StringVar(&cfg.OutputPath, "output", "", "report output path; empty writes /tmp/<timestamp>-<commit>.json")
 	f.StringVar(&cfg.DBBackend, "db-type", envOr("BENCH_DB_TYPE", "local"), "database backend label: local|external (env BENCH_DB_TYPE)")
 	f.StringVar(&cfg.ServerImage, "server-image", os.Getenv("BENCH_SERVER_IMAGE"), "server image tag for the report (env BENCH_SERVER_IMAGE)")
 }
